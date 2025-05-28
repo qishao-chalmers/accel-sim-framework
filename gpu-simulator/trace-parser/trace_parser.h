@@ -12,6 +12,7 @@
 #define WARP_SIZE 32
 #define MAX_DST 1
 #define MAX_SRC 4
+#define MAX_STORE_DATA_REGS 4  // Maximum number of registers for store data
 
 enum command_type {
   kernel_launch = 1,
@@ -28,6 +29,28 @@ enum address_scope {
 };
 
 enum address_format { list_all = 0, base_stride = 1, base_delta = 2 };
+
+// Enum to track the data type of store operations
+enum store_data_type_t {
+  STORE_DATA_UNKNOWN = 0,
+  STORE_DATA_INT8 = 1,
+  STORE_DATA_INT16 = 2, 
+  STORE_DATA_INT32 = 3,
+  STORE_DATA_INT64 = 4,
+  STORE_DATA_FLOAT32 = 5,
+  STORE_DATA_FLOAT64 = 6
+};
+
+// Structure to hold store data information
+struct inst_store_data_t {
+  bool is_store;                                    // Flag to indicate if this is a store operation
+  store_data_type_t data_type;                      // Type of data being stored
+  int num_regs;                                     // Number of registers containing store data
+  uint64_t data[WARP_SIZE][MAX_STORE_DATA_REGS];    // Store data values [thread][reg_index]
+  
+  inst_store_data_t();
+  ~inst_store_data_t();
+};
 
 struct trace_command {
   std::string command_string;
@@ -60,6 +83,7 @@ struct inst_trace_t {
   uint64_t imm;
 
   inst_memadd_info_t *memadd_info;
+  inst_store_data_t *store_data_info;  // Store data information
 
   bool parse_from_string(std::string trace, unsigned tracer_version,
                          unsigned enable_lineinfo);
@@ -142,7 +166,7 @@ class trace_parser {
   kernel_trace_t *parse_kernel_info(const std::string &kerneltraces_filepath);
 
   void parse_memcpy_info(const std::string &memcpy_command, size_t &add,
-                         size_t &count);
+                         size_t &count, std::string &dump_filename);
 
   void get_next_threadblock_traces(
       std::vector<std::vector<inst_trace_t> *> threadblock_traces,

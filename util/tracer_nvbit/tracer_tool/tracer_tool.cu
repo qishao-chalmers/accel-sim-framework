@@ -66,6 +66,10 @@ int user_defined_folders = 0;
 /* Use xz to compress the *.trace file */
 int xz_compress_trace = 0;
 
+/* Memory dumping control variables */
+int enable_memory_dump = 0;
+int memory_dump_compress = 0;
+
 /* opcode to id map and reverse map  */
 std::map<std::string, int> opcode_to_id_map;
 std::map<int, std::string> id_to_opcode_map;
@@ -80,6 +84,7 @@ std::unordered_map<CUcontext, std::string> ctx_kernelslist;
 std::unordered_map<CUcontext, std::string> ctx_stats_location;
 std::unordered_map<CUcontext, int> ctx_kernelid;
 std::unordered_map<CUcontext, FILE *> ctx_resultsFile;
+std::unordered_map<CUcontext, int> ctx_memcpy_counter;
 
 std::string kernel_ranges = "";
 
@@ -233,6 +238,10 @@ GET_VAR_INT(
   GET_VAR_INT(xz_compress_trace, "TRACE_FILE_COMPRESS", 1,
               "Create xz-compressed trace"
               "file");
+  GET_VAR_INT(enable_memory_dump, "ENABLE_MEMORY_DUMP", 1,
+              "Enable memory dump");
+  GET_VAR_INT(memory_dump_compress, "MEMORY_DUMP_COMPRESS", 0,
+              "Enable memory dump compression");
   std::string pad(100, '-');
   printf("%s\n", pad.c_str());
 
@@ -395,6 +404,90 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
         /* Add Source code line number for current instr */
         nvbit_add_call_arg_const_val32(instr, (int)line_num);
 
+        // Detect if this is a store operation and capture store data
+        std::string opcode_str = instr->getOpcode();
+        bool is_store_op = (opcode_str.find("ST") == 0 || 
+                           opcode_str.find("STG") == 0 || 
+                           opcode_str.find("STS") == 0 ||
+                           opcode_str.find("STL") == 0 ||
+                           opcode_str.find("ATOM") == 0 ||
+                           opcode_str.find("RED") == 0);
+        
+        nvbit_add_call_arg_const_val32(instr, is_store_op ? 1 : 0);
+        
+        // For store operations, identify and capture the data registers
+        std::vector<int> store_data_regs;
+        store_data_type_t data_type = STORE_DATA_UNKNOWN;
+        
+        if (is_store_op && mem_oper_idx >= 0) {
+          // Determine data type from opcode
+          if (opcode_str.find(".F32") != std::string::npos || opcode_str.find(".32") != std::string::npos) {
+            data_type = STORE_DATA_FLOAT32;
+          } else if (opcode_str.find(".F64") != std::string::npos || opcode_str.find(".64") != std::string::npos) {
+            data_type = STORE_DATA_FLOAT64;
+          } else if (opcode_str.find(".U64") != std::string::npos || opcode_str.find(".S64") != std::string::npos) {
+            data_type = STORE_DATA_INT64;
+          } else if (opcode_str.find(".U32") != std::string::npos || opcode_str.find(".S32") != std::string::npos) {
+            data_type = STORE_DATA_INT32;
+          } else if (opcode_str.find(".U16") != std::string::npos || opcode_str.find(".S16") != std::string::npos) {
+            data_type = STORE_DATA_INT16;
+          } else if (opcode_str.find(".U8") != std::string::npos || opcode_str.find(".S8") != std::string::npos) {
+            data_type = STORE_DATA_INT8;
+          } else {
+            // Default based on instruction size
+            int size = instr->getSize();
+            if (size == 8) data_type = STORE_DATA_INT64;
+            else if (size == 4) data_type = STORE_DATA_INT32;
+            else if (size == 2) data_type = STORE_DATA_INT16;
+            else if (size == 1) data_type = STORE_DATA_INT8;
+            else data_type = STORE_DATA_INT32; // fallback
+          }
+          
+          // For store operations, the source registers (excluding address register) contain the data
+          for (int i = 0; i < instr->getNumOperands(); ++i) {
+            const InstrType::operand_t *op = instr->getOperand(i);
+            if (op->type == InstrType::OperandType::REG) {
+              // Skip the first operand if it's a destination (for atomic operations)
+              // For regular stores, all register operands except the address register contain data
+              if (i > 0 || (i == 0 && opcode_str.find("ATOM") != 0 && opcode_str.find("RED") != 0)) {
+                // Check if this register is not the address register
+                bool is_addr_reg = false;
+                for (int j = 0; j < instr->getNumOperands(); ++j) {
+                  const InstrType::operand_t *addr_op = instr->getOperand(j);
+                  if (addr_op->type == InstrType::OperandType::MREF && 
+                      addr_op->u.mref.ra_num == op->u.reg.num) {
+                    is_addr_reg = true;
+                    break;
+                  }
+                }
+                if (!is_addr_reg) {
+                  // For 64-bit data types, we need two consecutive registers
+                  // For smaller types, we use one register
+                  if (data_type == STORE_DATA_FLOAT64 || data_type == STORE_DATA_INT64) {
+                    store_data_regs.push_back(op->u.reg.num);     // Lower 32 bits
+                    store_data_regs.push_back(op->u.reg.num + 1); // Upper 32 bits
+                  } else {
+                    store_data_regs.push_back(op->u.reg.num);
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // Add data type
+        nvbit_add_call_arg_const_val32(instr, (int32_t)data_type);
+        
+        // Add number of store data registers
+        nvbit_add_call_arg_const_val32(instr, store_data_regs.size());
+        
+        // Add store data register values based on data type
+        for (int reg_num : store_data_regs) {
+          // The boolean parameter indicates this is a variadic argument, not the data type
+          // nvbit always captures register values as uint32_t regardless of actual content
+          nvbit_add_call_arg_reg_val(instr, reg_num, true);  // true = variadic argument
+        }
+
         mem_oper_idx--;
       } while (mem_oper_idx >= 0);
 
@@ -534,7 +627,7 @@ static void enter_kernel_launch(CUcontext ctx, CUfunction func,
             "#traces format = [line_num] PC mask dest_num [reg_dests] "
             "opcode src_num "
             "[reg_srcs] mem_width [adrrescompress?] [mem_addresses] "
-            "immediate\n");
+            "immediate [STORE_DATA num_regs [REGx:Ty:value ...]]\n");
     fprintf(ctx_resultsFile[ctx], "\n");
   }
 
@@ -768,11 +861,68 @@ void nvbit_at_cuda_event(CUcontext ctx, int is_exit, nvbit_api_cuda_t cbid,
     if (!is_exit) {
       cuMemcpyHtoD_v2_params *p = (cuMemcpyHtoD_v2_params *)params;
       char buffer[1024];
+      
+      // Generate memory dump filename if enabled
+      std::string memory_dump_filename = "";
+      if (enable_memory_dump) {
+        sprintf(buffer, "memcpy_htod_%d_ctx_0x%lx_addr_0x%016llx_size_%llu.bin", 
+                ctx_memcpy_counter[ctx], ctx, p->dstDevice, p->ByteCount);
+        memory_dump_filename = user_folder + "/traces/" + buffer;
+        
+        // Dump the host memory data to binary file
+        FILE *dump_file = NULL;
+        if (memory_dump_compress) {
+          char cmd_buffer[2048];
+          sprintf(cmd_buffer, "xz -1 -T0 > %s.xz", memory_dump_filename.c_str());
+          dump_file = popen(cmd_buffer, "wb");
+          if (verbose) {
+            printf("Dumping compressed memory to %s.xz (size: %llu bytes)\n", 
+                   memory_dump_filename.c_str(), p->ByteCount);
+          }
+        } else {
+          dump_file = fopen(memory_dump_filename.c_str(), "wb");
+          if (verbose) {
+            printf("Dumping memory to %s (size: %llu bytes)\n", 
+                   memory_dump_filename.c_str(), p->ByteCount);
+          }
+        }
+        
+        if (dump_file != NULL) {
+          // Write the host memory data to the dump file
+          size_t written = fwrite(p->srcHost, 1, p->ByteCount, dump_file);
+          if (written != p->ByteCount) {
+            printf("Warning: Only wrote %zu out of %llu bytes to memory dump file\n", 
+                   written, p->ByteCount);
+          }
+          
+          if (memory_dump_compress) {
+            pclose(dump_file);
+          } else {
+            fclose(dump_file);
+          }
+        } else {
+          printf("Error: Failed to create memory dump file %s\n", memory_dump_filename.c_str());
+        }
+      }
+      
+      // Write to kernelslist
       kernelsFile = fopen(ctx_kernelslist[ctx].c_str(), "a");
-      sprintf(buffer, "MemcpyHtoD,0x%016llx,%llu", p->dstDevice, p->ByteCount);
+      if (enable_memory_dump) {
+        // Include memory dump filename in kernelslist entry
+        sprintf(buffer, "MemcpyHtoD,0x%016llx,%llu,%s%s", 
+                p->dstDevice, p->ByteCount, 
+                memory_dump_filename.substr(memory_dump_filename.find_last_of('/') + 1).c_str(),
+                memory_dump_compress ? ".xz" : "");
+      } else {
+        // Original format without memory dump
+        sprintf(buffer, "MemcpyHtoD,0x%016llx,%llu", p->dstDevice, p->ByteCount);
+      }
       fprintf(kernelsFile, buffer);
       fprintf(kernelsFile, "\n");
       fclose(kernelsFile);
+      
+      // Increment memory copy counter
+      ctx_memcpy_counter[ctx]++;
     }
   } break;
   // For cuProfiler, we need to set the active region accordingly
@@ -982,6 +1132,52 @@ void *recv_thread_fun(void *args) {
         // Print the immediate
         fprintf(ctx_resultsFile[ctx], "%d ", ma->imm);
 
+        // Print store data if this is a store operation
+        if (ma->is_store && ma->num_store_data_regs > 0) {
+          const char* type_names[] = {"UNK", "I8", "I16", "I32", "I64", "F32", "F64"};
+          fprintf(ctx_resultsFile[ctx], "STORE_DATA %s %d ", 
+                  type_names[ma->store_data_type], ma->num_store_data_regs);
+          
+          for (int reg_idx = 0; reg_idx < ma->num_store_data_regs; reg_idx++) {
+            fprintf(ctx_resultsFile[ctx], "REG%d:", reg_idx);
+            for (int tid = 0; tid < 32; tid++) {
+              if (mask.test(tid)) {
+                // Format output based on data type
+                switch (ma->store_data_type) {
+                  case STORE_DATA_FLOAT32: {
+                    uint32_t int_val = (uint32_t)ma->store_data[tid][reg_idx];
+                    float float_val = *(float*)&int_val;
+                    fprintf(ctx_resultsFile[ctx], "T%d:%g ", tid, float_val);
+                    break;
+                  }
+                  case STORE_DATA_FLOAT64: {
+                    uint64_t int_val = ma->store_data[tid][reg_idx];
+                    double double_val = *(double*)&int_val;
+                    fprintf(ctx_resultsFile[ctx], "T%d:%g ", tid, double_val);
+                    break;
+                  }
+                  case STORE_DATA_INT64:
+                    fprintf(ctx_resultsFile[ctx], "T%d:0x%016llx ", tid, ma->store_data[tid][reg_idx]);
+                    break;
+                  case STORE_DATA_INT32:
+                    fprintf(ctx_resultsFile[ctx], "T%d:0x%08x ", tid, (uint32_t)ma->store_data[tid][reg_idx]);
+                    break;
+                  case STORE_DATA_INT16:
+                    fprintf(ctx_resultsFile[ctx], "T%d:0x%04x ", tid, (uint16_t)ma->store_data[tid][reg_idx]);
+                    break;
+                  case STORE_DATA_INT8:
+                    fprintf(ctx_resultsFile[ctx], "T%d:0x%02x ", tid, (uint8_t)ma->store_data[tid][reg_idx]);
+                    break;
+                  default:
+                    fprintf(ctx_resultsFile[ctx], "T%d:0x%016llx ", tid, ma->store_data[tid][reg_idx]);
+                    break;
+                }
+              }
+            }
+            fprintf(ctx_resultsFile[ctx], " ");
+          }
+        }
+
         fprintf(ctx_resultsFile[ctx], "\n");
 
         num_processed_bytes += sizeof(inst_trace_t);
@@ -1015,4 +1211,5 @@ void nvbit_at_ctx_init(CUcontext ctx) {
   std::string tmp_stats = user_folder + "/traces/" + buffer;
   ctx_stats_location[ctx] = tmp_stats;
   ctx_kernelid[ctx] = 1;
+  ctx_memcpy_counter[ctx] = 0;
 }

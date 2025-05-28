@@ -34,17 +34,23 @@ void split(const std::string &str, std::vector<std::string> &cont,
 
 inst_trace_t::inst_trace_t() {
   memadd_info = NULL;
+  store_data_info = NULL;
   imm = 0;
 }
 
 inst_trace_t::~inst_trace_t() {
   if (memadd_info != NULL) delete memadd_info;
+  if (store_data_info != NULL) delete store_data_info;
 }
 
 inst_trace_t::inst_trace_t(const inst_trace_t &b) {
   if (memadd_info != NULL) {
     memadd_info = new inst_memadd_info_t();
     memadd_info = b.memadd_info;
+  }
+  if (store_data_info != NULL) {
+    store_data_info = new inst_store_data_t();
+    store_data_info = b.store_data_info;
   }
 }
 
@@ -222,6 +228,96 @@ bool inst_trace_t::parse_from_string(std::string trace, unsigned trace_version,
 
   ss >> imm;
 
+  // Parse store data if present
+  std::string next_token;
+  if (ss >> next_token) {
+    if (next_token == "STORE_DATA") {
+      store_data_info = new inst_store_data_t();
+      store_data_info->is_store = true;
+      
+      // Parse data type
+      std::string type_str;
+      ss >> type_str;
+      if (type_str == "I8") {
+        store_data_info->data_type = STORE_DATA_INT8;
+      } else if (type_str == "I16") {
+        store_data_info->data_type = STORE_DATA_INT16;
+      } else if (type_str == "I32") {
+        store_data_info->data_type = STORE_DATA_INT32;
+      } else if (type_str == "I64") {
+        store_data_info->data_type = STORE_DATA_INT64;
+      } else if (type_str == "F32") {
+        store_data_info->data_type = STORE_DATA_FLOAT32;
+      } else if (type_str == "F64") {
+        store_data_info->data_type = STORE_DATA_FLOAT64;
+      } else {
+        store_data_info->data_type = STORE_DATA_UNKNOWN;
+      }
+      
+      // Parse number of registers
+      ss >> store_data_info->num_regs;
+      
+      // Parse register data for each register
+      for (int reg_idx = 0; reg_idx < store_data_info->num_regs && reg_idx < MAX_STORE_DATA_REGS; reg_idx++) {
+        std::string reg_header;
+        ss >> reg_header; // Should be "REGx:"
+        
+        // Parse thread data for this register
+        std::string thread_data;
+        while (ss >> thread_data) {
+          // Check if this is the start of next register or end of store data
+          if (thread_data.find("REG") == 0) {
+            // This is the start of next register, put it back
+            ss.seekg(-thread_data.length(), std::ios_base::cur);
+            break;
+          }
+          
+          // Parse thread data: Ty:value format
+          size_t colon_pos = thread_data.find(':');
+          if (colon_pos != std::string::npos) {
+            std::string thread_part = thread_data.substr(0, colon_pos);
+            std::string value_part = thread_data.substr(colon_pos + 1);
+            
+            // Extract thread ID
+            if (thread_part[0] == 'T') {
+              int thread_id = std::stoi(thread_part.substr(1));
+              if (thread_id >= 0 && thread_id < WARP_SIZE) {
+                // Parse value based on data type
+                uint64_t value = 0;
+                switch (store_data_info->data_type) {
+                  case STORE_DATA_FLOAT32: {
+                    float float_val = std::stof(value_part);
+                    value = *(uint32_t*)&float_val;
+                    break;
+                  }
+                  case STORE_DATA_FLOAT64: {
+                    double double_val = std::stod(value_part);
+                    value = *(uint64_t*)&double_val;
+                    break;
+                  }
+                  case STORE_DATA_INT64:
+                  case STORE_DATA_INT32:
+                  case STORE_DATA_INT16:
+                  case STORE_DATA_INT8:
+                  default: {
+                    // Parse as hex value
+                    if (value_part.substr(0, 2) == "0x") {
+                      value = std::stoull(value_part, nullptr, 16);
+                    } else {
+                      value = std::stoull(value_part, nullptr, 10);
+                    }
+                    break;
+                  }
+                }
+                store_data_info->data[thread_id][reg_idx] = value;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Finish Parsing
 
   return true;
@@ -272,10 +368,21 @@ std::vector<trace_command> trace_parser::parse_commandlist_file() {
 }
 
 void trace_parser::parse_memcpy_info(const std::string &memcpy_command,
-                                     size_t &address, size_t &count) {
+                                     size_t &address, size_t &count, std::string &dump_filename) {
   std::vector<std::string> params;
   split(memcpy_command, params, ',');
-  assert(params.size() == 3);
+  
+  // Handle both old format (3 params) and new format (4 params with dump filename)
+  if (params.size() == 3) {
+    // Old format: MemcpyHtoD,address,size
+    dump_filename = "";  // No dump file
+  } else if (params.size() == 4) {
+    // New format: MemcpyHtoD,address,size,dump_filename
+    dump_filename = params[3];
+  } else {
+    assert(false && "Invalid memcpy command format");
+  }
+  
   std::stringstream ss;
   ss.str(params[1]);
   ss >> std::hex >> address;
@@ -490,4 +597,20 @@ PipeReader &PipeReader::operator=(PipeReader &&other) noexcept {
     other.command = {};
   }
   return *this;
+}
+
+inst_store_data_t::inst_store_data_t() {
+  is_store = false;
+  data_type = STORE_DATA_UNKNOWN;
+  num_regs = 0;
+  // Initialize data array to zero
+  for (int tid = 0; tid < WARP_SIZE; tid++) {
+    for (int reg = 0; reg < MAX_STORE_DATA_REGS; reg++) {
+      data[tid][reg] = 0;
+    }
+  }
+}
+
+inst_store_data_t::~inst_store_data_t() {
+  // Nothing to clean up for now
 }
