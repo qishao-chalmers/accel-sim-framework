@@ -506,10 +506,12 @@ void trace_config::set_latency(unsigned category, unsigned &latency,
 
 void trace_gpgpu_sim::createSIMTCluster() {
   m_cluster = new simt_core_cluster *[m_shader_config->n_simt_clusters];
+  std::cout << " number of simt clusters:" << m_shader_config->n_simt_clusters << std::endl;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
     m_cluster[i] =
         new trace_simt_core_cluster(this, i, m_shader_config, m_memory_config,
                                     m_shader_stats, m_memory_stats);
+
 }
 
 void trace_simt_core_cluster::create_shader_core_ctx() {
@@ -518,8 +520,13 @@ void trace_simt_core_cluster::create_shader_core_ctx() {
     unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
     m_core[i] = new trace_shader_core_ctx(m_gpu, this, sid, m_cluster_id,
                                           m_config, m_mem_config, m_stats);
+    std::cout << "Creating shader core ctx with shader id: " << sid
+              << " in cluster: " << m_cluster_id << std::endl;
     m_core_sim_order.push_back(i);
   }
+
+  std::cout << " number of simt core (SM/shader) in each cluster:" << m_config->n_simt_cores_per_cluster
+            << " clusterId :" << m_cluster_id << std::endl;
 }
 
 void trace_shader_core_ctx::create_shd_warp() {

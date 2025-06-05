@@ -6,6 +6,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <set>
+#include <map>
 
 #include "../ISA_Def/trace_opcode.h"
 #include "../trace-parser/trace_parser.h"
@@ -23,29 +25,13 @@ class accel_sim_framework {
   accel_sim_framework(int argc, const char **argv);
   accel_sim_framework(std::string config_file, std::string trace_file);
 
-  void init() {
-    active = false;
-    sim_cycles = false;
-    window_size = 0;
-    commandlist_index = 0;
-
-    assert(m_gpgpu_context);
-    assert(m_gpgpu_sim);
-
-    concurrent_kernel_sm =
-        m_gpgpu_sim->getShaderCoreConfig()->gpgpu_concurrent_kernel_sm;
-    window_size = concurrent_kernel_sm
-                      ? m_gpgpu_sim->get_config().get_max_concurrent_kernel()
-                      : 1;
-    assert(window_size > 0);
-    commandlist = tracer.parse_commandlist_file();
-
-    kernels_info.reserve(window_size);
-  }
+  void init();
+  
   void simulation_loop();
   void parse_commandlist();
   void cleanup(unsigned finished_kernel);
   unsigned simulate();
+  void global_stream_analysis();  // Global stream analysis function
   trace_kernel_info_t *create_kernel_info(kernel_trace_t *kernel_trace_info,
                                           gpgpu_context *m_gpgpu_context,
                                           trace_config *config,
@@ -67,8 +53,18 @@ class accel_sim_framework {
   unsigned window_size;
   unsigned commandlist_index;
 
+  bool is_multi_trace;
+  unsigned trace1_kernel_num;
+  unsigned trace2_kernel_num;
+
   std::vector<unsigned long long> busy_streams;
   std::vector<trace_kernel_info_t *> kernels_info;
+  // counts the number of kernels launched in the stream
+  std::map<unsigned int, unsigned int> stream_kernel_map;
   std::vector<trace_command> commandlist;
+  
+  // Global stream analysis data
+  std::set<unsigned long long> global_unique_streams;
+  std::map<unsigned long long, std::pair<unsigned, unsigned>> global_stream_core_ranges;
 
 };

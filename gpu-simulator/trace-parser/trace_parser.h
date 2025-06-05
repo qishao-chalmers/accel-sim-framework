@@ -55,6 +55,7 @@ struct inst_store_data_t {
 struct trace_command {
   std::string command_string;
   command_type m_type;
+  unsigned trace_id;
 };
 
 struct inst_memadd_info_t {
@@ -163,7 +164,9 @@ class trace_parser {
 
   std::vector<trace_command> parse_commandlist_file();
 
-  kernel_trace_t *parse_kernel_info(const std::string &kerneltraces_filepath);
+  kernel_trace_t *parse_kernel_info(const std::string &kerneltraces_filepath,
+                                    bool is_multi_trace = false,
+                                    unsigned trace_id = 0);
 
   void parse_memcpy_info(const std::string &memcpy_command, size_t &add,
                          size_t &count, std::string &dump_filename);
@@ -175,8 +178,21 @@ class trace_parser {
 
   void kernel_finalizer(kernel_trace_t *trace_info);
 
+  unsigned get_trace_num() {
+    return kernellist_filenames.size();
+  }
+
+  unsigned get_trace1_kernel_num() {
+    return trace1_kernel_num;
+  }
+
+  unsigned get_trace2_kernel_num() {
+    return trace2_kernel_num;
+  }
  private:
-  std::string kernellist_filename;
+  std::vector<std::string> kernellist_filenames;
+  unsigned trace1_kernel_num = 0;  // Number of kernels in the first trace
+  unsigned trace2_kernel_num = 0;  // Number of kernels in the second trace
 };
 
 #endif

@@ -32,6 +32,17 @@ void split(const std::string &str, std::vector<std::string> &cont,
   }
 }
 
+// Helper function to split space-separated file paths
+void split_kernellist_paths(const std::string &paths_str, std::vector<std::string> &paths) {
+  std::stringstream ss(paths_str);
+  std::string path;
+  while (ss >> path) {  // This automatically handles multiple spaces
+    if (!path.empty()) {
+      paths.push_back(path);
+    }
+  }
+}
+
 inst_trace_t::inst_trace_t() {
   memadd_info = NULL;
   store_data_info = NULL;
@@ -324,46 +335,65 @@ bool inst_trace_t::parse_from_string(std::string trace, unsigned trace_version,
 }
 
 trace_parser::trace_parser(const char *kernellist_filepath) {
-  kernellist_filename = kernellist_filepath;
+  split_kernellist_paths(std::string(kernellist_filepath), kernellist_filenames);
 }
 
 std::vector<trace_command> trace_parser::parse_commandlist_file() {
-  std::ifstream fs;
-  fs.open(kernellist_filename);
-
-  if (!fs.is_open()) {
-    std::cout << "Unable to open file: " << kernellist_filename << std::endl;
-    exit(1);
-  }
-
-  std::string directory(kernellist_filename);
-  const size_t last_slash_idx = directory.rfind('/');
-  if (std::string::npos != last_slash_idx) {
-    directory = directory.substr(0, last_slash_idx);
-  }
-
-  std::string line, filepath;
   std::vector<trace_command> commandlist;
-  while (!fs.eof()) {
-    getline(fs, line);
-    if (line.empty())
-      continue;
-    else if (line.substr(0, 10) == "MemcpyHtoD") {
-      trace_command command;
-      command.command_string = line;
-      command.m_type = command_type::cpu_gpu_mem_copy;
-      commandlist.push_back(command);
-    } else if (line.substr(0, 6) == "kernel") {
-      trace_command command;
-      command.m_type = command_type::kernel_launch;
-      filepath = directory + "/" + line;
-      command.command_string = filepath;
-      commandlist.push_back(command);
-    }
-    // ignore gpu_to_cpu_memory_cpy
-  }
+  int trace_id = 0;
+  // Iterate through all kernel list files
+  for (const std::string& kernellist_filename : kernellist_filenames) {
+    std::ifstream fs;
+    fs.open(kernellist_filename);
 
-  fs.close();
+    if (!fs.is_open()) {
+      std::cout << "Unable to open file: " << kernellist_filename << std::endl;
+      exit(1);
+    }
+
+    std::string directory(kernellist_filename);
+    const size_t last_slash_idx = directory.rfind('/');
+    if (std::string::npos != last_slash_idx) {
+      directory = directory.substr(0, last_slash_idx);
+    }
+
+    std::string line, filepath;
+    while (!fs.eof()) {
+      getline(fs, line);
+      if (line.empty())
+        continue;
+      else if (line.substr(0, 10) == "MemcpyHtoD") {
+        trace_command command;
+        command.command_string = line;
+        command.m_type = command_type::cpu_gpu_mem_copy;
+        commandlist.push_back(command);
+        // the trace id is the index in kernellist_filenames
+        command.trace_id = trace_id;
+        if (trace_id == 0) {
+          trace1_kernel_num++;
+        } else if (trace_id == 1) {
+          trace2_kernel_num++;
+        }
+      } else if (line.substr(0, 6) == "kernel") {
+        trace_command command;
+        command.m_type = command_type::kernel_launch;
+        filepath = directory + "/" + line;
+        command.command_string = filepath;
+        commandlist.push_back(command);
+        command.trace_id = trace_id;
+        if (trace_id == 0) {
+          trace1_kernel_num++;
+        } else if (trace_id == 1) {
+          trace2_kernel_num++;
+        }
+      }
+      // ignore gpu_to_cpu_memory_cpy
+    }
+
+    trace_id++;
+    fs.close();
+  }
+  
   return commandlist;
 }
 
@@ -392,7 +422,8 @@ void trace_parser::parse_memcpy_info(const std::string &memcpy_command,
 }
 
 kernel_trace_t *trace_parser::parse_kernel_info(
-    const std::string &kerneltraces_filepath) {
+    const std::string &kerneltraces_filepath,
+    bool is_multi_trace,unsigned trace_id) {
   std::cout << "Processing kernel " << kerneltraces_filepath << std::endl;
   kernel_trace_t *kernel_info = new kernel_trace_t(kerneltraces_filepath);
   kernel_info->enable_lineinfo = 0;  // default disabled
@@ -430,6 +461,9 @@ kernel_trace_t *trace_parser::parse_kernel_info(
       } else if (string1 == "cuda" && string2 == "stream") {
         sscanf(line.c_str(), "-cuda stream id = %llu",
                &kernel_info->cuda_stream_id);
+        if (is_multi_trace) { // if multi-trace, set the stream id from the trace id
+          kernel_info->cuda_stream_id = trace_id;
+        }
       } else if (string1 == "binary" && string2 == "version") {
         sscanf(line.c_str(), "-binary version = %d",
                &kernel_info->binary_verion);
@@ -511,7 +545,7 @@ void trace_parser::get_next_threadblock_traces(
         assert(start_of_tb_stream_found);
         sscanf(line.c_str(), "thread block = %d,%d,%d", &block_id_x,
                &block_id_y, &block_id_z);
-        std::cout << line << std::endl;
+        //std::cout << line << std::endl;
       } else if (string1 == "warp") {
         // the start of new warp stream
         assert(start_of_tb_stream_found);
