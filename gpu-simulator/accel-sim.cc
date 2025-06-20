@@ -173,6 +173,7 @@ void accel_sim_framework::parse_commandlist() {
 }
 
 void accel_sim_framework::cleanup(unsigned finished_kernel) {
+  bool end_of_one_stream = false;
   trace_kernel_info_t *k = NULL;
   unsigned long long finished_kernel_cuda_stream_id = -1;
   for (unsigned j = 0; j < kernels_info.size(); j++) {
@@ -200,6 +201,7 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
             printf("Stream %llu has no more kernels, allocating all cores to stream %llu\n",
                    k->get_cuda_stream_id(), kernels_info[i]->get_cuda_stream_id());
             m_gpgpu_sim->release_core_range_limit();
+            end_of_one_stream = true;
           }
         }
       }
@@ -213,6 +215,10 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
   }
   assert(k);
   m_gpgpu_sim->print_stats(finished_kernel_cuda_stream_id);
+  // end the simulation
+  if (end_of_one_stream) {
+    exit(0);
+  }
 }
 
 unsigned accel_sim_framework::simulate() {

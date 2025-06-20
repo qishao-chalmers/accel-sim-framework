@@ -240,6 +240,15 @@ bool trace_warp_inst_t::parse_from_trace_struct(
     arch_reg.src[m] = trace.reg_src[m] + 1;
   }
 
+  // fill store data
+  if (trace.store_data_info != NULL) {
+    for (unsigned i = 0; i < warp_size(); ++i) {
+      for (unsigned j = 0; j < trace.store_data_info->num_regs; ++j) {
+        data[i][j] = trace.store_data_info->data[i][j];
+      }
+    }
+  }
+
   // fill latency and initl
   tconfig->set_latency(op, latency, initiation_interval);
 

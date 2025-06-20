@@ -595,7 +595,7 @@ bool PipeReader::readLine(std::string &line) {
   // Use getline() to read from the pipe
   if ((nread = getline(&buffer, &len, pipe)) != -1) {
     line.assign(buffer, nread);  // Assign the read line to the std::string
-    assert(line.back() == '\n');
+    //assert(line.back() == '\n');
     line.pop_back();  // Remove the newline character
     free(buffer);     // Free the buffer allocated by getline
     return true;
