@@ -1,2 +1,0 @@
-/home/qishao/Project/gpu_simulator/accel-multi-task/gpu-simulator/gpgpu-sim/lib/gcc-9.4.0/cuda-11080/release/libcudart.so
-/home/qishao/Project/gpu_simulator/accel-multi-task/gpu-simulator/bin/release/accel-sim.out

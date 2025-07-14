@@ -1,2 +1,0 @@
-/usr/bin/ar qc libtrace-driven.a "CMakeFiles/trace-driven.dir/trace_driven.cc.o"
-/usr/bin/ranlib libtrace-driven.a

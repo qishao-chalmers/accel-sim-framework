@@ -1,1 +1,0 @@
-const char *g_accelsim_version="accelsim-commit-a680d1f_modified_2.0_25-07-14-10-42-37";
