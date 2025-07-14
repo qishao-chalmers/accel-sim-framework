@@ -22,7 +22,16 @@ def truncate_workload_name(workload_name, max_length=50):
 
 
 def extract_metric(log_file, metric_name, sequence_id=None):
-    """Extract metric value from a log file at a specific sequence ID."""
+    """Extract metric value from a log file at a specific sequence ID.
+    
+    Args:
+        log_file: Path to the log file
+        metric_name: Name of the metric to extract
+        sequence_id: Specific sequence ID to extract (0-based). If None, returns the last metric.
+    
+    Returns:
+        float: Metric value if found, None otherwise
+    """
     try:
         with open(log_file, 'r') as f:
             content = f.read()
@@ -41,24 +50,31 @@ def extract_metric(log_file, metric_name, sequence_id=None):
 
 
 def get_common_sequence_id(workload, configs, metric_name):
-    """Find the common sequence ID that exists across all configurations for a workload."""
+    """Find the last common sequence ID that exists across configurations that have the metric."""
     sequence_counts = []
+    configs_with_metric = []
     
     for config in configs:
-        log_file = f"./{config}/logs_queue/{workload}.log"
+        log_file = f"./{config}/logs/{workload}.log"
         try:
             with open(log_file, 'r') as f:
                 content = f.read()
                 metric_lines = re.findall(rf'{re.escape(metric_name)}\s*[:=]\s*([\d.]+)', content)
-                sequence_counts.append(len(metric_lines))
+                sequence_count = len(metric_lines)
+                sequence_counts.append(sequence_count)
+                if sequence_count > 0:
+                    configs_with_metric.append(config)
         except (FileNotFoundError, IOError):
             sequence_counts.append(0)
     
-    # Find the minimum number of sequences across all configurations
-    min_sequences = min(sequence_counts) if sequence_counts else 0
+    # Only consider configurations that actually have the metric
+    valid_sequence_counts = [count for count in sequence_counts if count > 0]
     
-    if min_sequences > 0:
+    if valid_sequence_counts:
+        # Find the minimum number of sequences across configurations that have the metric
+        min_sequences = min(valid_sequence_counts)
         # Use the last common sequence ID (min_sequences - 1, since indexing starts at 0)
+        # This ensures we use the last metric that exists in ALL configurations that have the metric
         return min_sequences - 1
     else:
         return None
@@ -67,7 +83,7 @@ def get_common_sequence_id(workload, configs, metric_name):
 def get_all_workloads():
     """Get all unique workload names across all configurations."""
     workloads = set()
-    for log_file in glob.glob("./*/logs_queue/*.log"):
+    for log_file in glob.glob("./*/logs/*.log"):
         workload = os.path.splitext(os.path.basename(log_file))[0]
         workloads.add(workload)
     return sorted(workloads)
@@ -81,14 +97,14 @@ def get_configurations(specified_configs=None):
                           If None, returns all available configurations.
     """
     if specified_configs:
-        # Return only the specified configurations that exist
+        # Return only the specified configurations that exist, preserving order
         configs = []
         for config in specified_configs:
             if os.path.isdir(f"./{config}"):
                 configs.append(config)
             else:
                 print(f"Warning: Configuration directory '{config}' not found")
-        return sorted(configs)
+        return configs  # Don't sort - preserve input order
     else:
         # Return all configuration directories
         configs = []
@@ -96,13 +112,56 @@ def get_configurations(specified_configs=None):
             if os.path.isdir(dir_path):
                 config_name = os.path.basename(dir_path)
                 configs.append(config_name)
-        return sorted(configs)
+        return sorted(configs)  # Sort only when no specific configs provided
 
 
-def check_config_has_logs_queue(config):
-    """Check if a configuration has a logs_queue directory with log files."""
-    logs_queue_dir = f"./{config}/logs_queue"
-    return os.path.isdir(logs_queue_dir) and len(glob.glob(f"{logs_queue_dir}/*.log")) > 0
+def check_config_has_logs(config):
+    """Check if a configuration has a logs directory with log files."""
+    logs_dir = f"./{config}/logs"
+    return os.path.isdir(logs_dir) and len(glob.glob(f"{logs_dir}/*.log")) > 0
+
+
+def get_config_abbreviation(config):
+    """Get abbreviation for configuration name if available, otherwise return the original name."""
+    # Hardcoded abbreviations for common configuration names
+    abbreviations = {
+        '128k_cache': '128K',
+        '256k_cache': '256K', 
+        '512k_cache': '512K',
+        '4MB_cache': '4MB',
+        '64k_cache': '64K',
+        '128k_64B_cache': '128K-64B',
+        '128k_sector_cache': '128K-Sector',
+        '128k_sector_64B_cache': '128K-S64B',
+        '128k_sector_64B_cache_new': '128K-S64B-N',
+        '128k_sector_128B_cache': '128K-S128B',
+        '128k_sector_128B_cache_new': '128K-S128B-N',
+        '128k_sector_64B_l2_cache': '128K-S64B-L2',
+        '128k_sector_128B_l2_cache': '128K-S128B-L2',
+        '128k_sector_new_cache': '128K-SNew',
+        '128k_sector_new_reserve_cache': '128K-SNew-R',
+        '128k_dynamic_fetch_64_cache': '128K-DF64',
+        '128k_dynamic_fetch_128_cache': '128K-DF128',
+        'bypass_l1cache': 'Bypass-L1',
+        'run_128k_cache': '128K',
+        'run_256k_cache': '256K',
+        'run_512k_cache': '512K',
+        'run_4MB_cache': '4MB',
+        'run_64k_cache': '64K',
+        'run_128k_64B_cache': '128K-64B',
+        'run_128k_sector_cache': '128K-Sector',
+        'run_128k_sector_64B_cache': '128K-S64B',
+        'run_128k_sector_128B_cache': '128K-S128B',
+        'run_128k_sector_64B_l2_cache': '128K-S64B-L2',
+        'run_128k_sector_128B_l2_cache': '128K-S128B-L2',
+        'run_128k_sector_new_cache': '128K-SNew',
+        'run_128k_sector_new_reserve_cache': '128K-SNew-R',
+        'run_128k_dynamic_fetch_64_cache': '128K-DF64',
+        'run_128k_dynamic_fetch_128_cache': '128K-DF128',
+        'run_bypass_l1cache': 'Bypass-L1',
+    }
+    
+    return abbreviations.get(config, config)
 
 
 def get_display_name(config):
@@ -129,7 +188,7 @@ def compare_performance(metric_name, configs=None):
     configs = get_configurations(configs)
     
     if not workloads:
-        print("No log files found in */logs_queue/ directories")
+        print("No log files found in */logs/ directories")
         return
     
     if not configs:
@@ -137,8 +196,8 @@ def compare_performance(metric_name, configs=None):
         return
     
     # Filter configurations that have log files
-    valid_configs = [config for config in configs if check_config_has_logs_queue(config)]
-    missing_configs = [config for config in configs if not check_config_has_logs_queue(config)]
+    valid_configs = [config for config in configs if check_config_has_logs(config)]
+    missing_configs = [config for config in configs if not check_config_has_logs(config)]
     
     if missing_configs:
         print(f"Warning: The following configurations don't have log files and will be excluded:")
@@ -156,11 +215,11 @@ def compare_performance(metric_name, configs=None):
     # Print table header
     header = f"{'Workload':<53}"
     for config in valid_configs:
-        display_name = get_display_name(config)
+        display_name = get_config_abbreviation(config)
         header += f"{display_name:<15}"
     for config in valid_configs:
         if config != 'run' and config != 'cache':
-            display_name = get_display_name(config)
+            display_name = get_config_abbreviation(config)
             header += f"{display_name:<15}"
     print(header)
     
@@ -179,20 +238,25 @@ def compare_performance(metric_name, configs=None):
     
     # For each workload, compare metric across configurations
     for workload in workloads:
-        # Find the common sequence ID for this workload across all configurations
+        # Find the last common sequence ID for this workload across configurations that have the metric
+        # This ensures we compare metrics from the same point in execution across configs with valid data
         common_sequence_id = get_common_sequence_id(workload, valid_configs, metric_name)
         
         if common_sequence_id is not None:
-            print(f"Debug: {workload} using sequence ID {common_sequence_id}")
+            #print(f"Debug: {workload} using last common sequence ID {common_sequence_id}")
+            pass
+        else:
+            #print(f"Debug: {workload} - no valid metric data found in any configuration")
+            continue  # Skip this workload if no valid data exists
         
         # Truncate workload name for display
         display_workload = truncate_workload_name(workload, 50)
         row = f"{display_workload:<53}"
         workload_data = {}
         
-        # First pass: collect all metric values at the common sequence ID
+        # First pass: collect all metric values at the last common sequence ID
         for config in valid_configs:
-            log_file = f"./{config}/logs_queue/{workload}.log"
+            log_file = f"./{config}/logs/{workload}.log"
             metric_value = extract_metric(log_file, metric_name, common_sequence_id)
             
             if metric_value is not None:
@@ -203,13 +267,14 @@ def compare_performance(metric_name, configs=None):
                 workload_data[config] = None
         
         # Second pass: calculate percentage improvements over 'run' baseline
-        baseline = workload_data.get('cache')
+        baseline = workload_data.get('128k_cache')
         for config in valid_configs:
             if config != 'cache':
                 current_value = workload_data.get(config)
                 if baseline is not None and baseline != 0 and current_value is not None:
                     improvement = 100.0 * (current_value - baseline) / baseline
-                    row += f"{improvement:>+8.2f}%      "
+                    #row += f"{improvement:>+8.2f}%      "
+                    row += f"{improvement:>8.2f}%      "
                     improvement_data[workload][config] = improvement
                 else:
                     row += f"{'-':<15}"
@@ -262,20 +327,22 @@ def compare_performance(metric_name, configs=None):
             
             if baseline is not None and baseline != 0:
                 improvement = 100.0 * (valid_data[best_config] - baseline) / baseline
-                best_display_name = get_display_name(best_config)
+                best_display_name = get_config_abbreviation(best_config)
                 # Truncate workload name for analysis section too
                 display_workload = truncate_workload_name(workload, 20)
                 print(f"{display_workload:<20}: Best configuration = {best_display_name:<20} (improvement = {improvement:>+8.2f}%)")
             else:
-                best_display_name = get_display_name(best_config)
+                best_display_name = get_config_abbreviation(best_config)
                 display_workload = truncate_workload_name(workload, 20)
                 print(f"{display_workload:<20}: Best configuration = {best_display_name:<20} (improvement = -)")
     
     print()
     print("=== Summary ===")
     print(f"Legend: Higher {metric_name} values indicate better performance")
-    print("Percentage columns show improvement over 'run' baseline configuration")
-    print(f"{metric_name} values are compared at the same sequence ID across configurations")
+    print("Percentage columns show improvement over '128k_cache' baseline configuration")
+    print(f"{metric_name} values are compared at the last common sequence ID across configurations with valid data")
+    print("This ensures fair comparison even when different configs have different run times or missing metrics")
+    print("Configurations without the metric are marked with '-' and excluded from sequence ID calculation")
     print("Geometric mean provides overall performance comparison across all workloads")
     print("-: Log file not found or metric not present")
     print("Note: Workload names longer than 50 characters are truncated with '...'")
@@ -313,7 +380,7 @@ Examples:
     configs = None
     if args.configs:
         configs = [config.strip() for config in args.configs.split(',')]
-        print(f"Using specified configurations: {', '.join(configs)}")
+        print(f"Using specified configurations: {','.join(configs)}")
         print()
     
     # Run the comparison

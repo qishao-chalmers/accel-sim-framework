@@ -1,0 +1,2 @@
+/usr/bin/ar qc libtrace-parser.a "CMakeFiles/trace-parser.dir/trace_parser.cc.o"
+/usr/bin/ranlib libtrace-parser.a
