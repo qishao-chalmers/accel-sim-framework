@@ -141,6 +141,7 @@ def get_config_abbreviation(config):
         '128k_sector_new_cache': '128K-SNew',
         '128k_sector_new_reserve_cache': '128K-SNew-R',
         '128k_dynamic_fetch_64_cache': '128K-DF64',
+        '128k_dynamic_fetch_96_cache': '128K-DF96',
         '128k_dynamic_fetch_128_cache': '128K-DF128',
         'bypass_l1cache': 'Bypass-L1',
         'run_128k_cache': '128K',
