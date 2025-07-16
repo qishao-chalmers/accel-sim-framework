@@ -9,7 +9,7 @@ ACCEL_SIM="/home/qishao/Project/gpu_simulator/accel-multi-task/gpu-simulator/bin
 GPUGPUSIM_CONFIG="./gpgpusim.config"
 TRACE_CONFIG="/home/qishao/Project/gpu_simulator/accel-multi-task/gpu-simulator/configs/tested-cfgs/SM7_GV100/trace.config"
 LOG_DIR="./logs"
-TIME_LIMIT=20800  # half an hour per simulation
+TIME_LIMIT=7200  # half an hour per simulation
 
 # Base directory for trace files
 HW_RUN_BASE="/home/qishao/Project/gpu_simulator/accel-multi-task/hw_run"
@@ -145,15 +145,16 @@ main() {
         "${HW_RUN_BASE}/rodinia-3.1/11.0/nn-rodinia-3.1/__data_filelist_4__r_5__lat_30__lng_90/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/backprop-rodinia-3.1/65536/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/particlefilter_naive-rodinia-3.1/_x_128__y_128__z_10__np_1000/traces/kernelslist.g"
-        "${HW_RUN_BASE}/rodinia-3.1/11.0/lavaMD-rodinia-3.1/_boxes1d_10/traces/kernelslist.g"
+        # NEVER RUN THIS!!!!! it takes too long
+        #"${HW_RUN_BASE}/rodinia-3.1/11.0/lavaMD-rodinia-3.1/_boxes1d_10/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/hotspot-rodinia-3.1/512_2_2___data_temp_512___data_power_512_output_out/traces/kernelslist.g"
         # DEADLOCK
-        "${HW_RUN_BASE}/rodinia-3.1/11.0/hotspot-rodinia-3.1/1024_2_2___data_temp_1024___data_power_1024_output_out/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/rodinia-3.1/11.0/hotspot-rodinia-3.1/1024_2_2___data_temp_1024___data_power_1024_output_out/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/lud-rodinia-3.1/_i___data_512_dat/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/lud-rodinia-3.1/_s_256__v/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/hybridsort-rodinia-3.1/__data_500000_txt/traces/kernelslist.g"
         # longer than 2 hours
-        "${HW_RUN_BASE}/rodinia-3.1/11.0/hybridsort-rodinia-3.1/r/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/rodinia-3.1/11.0/hybridsort-rodinia-3.1/r/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/dwt2d-rodinia-3.1/__data_rgb_bmp__d_1024x1024__f__5__l_3/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/dwt2d-rodinia-3.1/__data_192_bmp__d_192x192__f__5__l_3/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/gaussian-rodinia-3.1/_f___data_matrix208_txt/traces/kernelslist.g"
@@ -164,10 +165,10 @@ main() {
         "${HW_RUN_BASE}/rodinia-3.1/11.0/nw-rodinia-3.1/2048_10/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/b+tree-rodinia-3.1/file___data_mil_txt_command___data_command_txt/traces/kernelslist.g"
         # longer than 2 hour
-        "${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_kdd_cup/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_kdd_cup/traces/kernelslist.g"
         # longer than 2 hours
-        "${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_28k_4x_features_txt/traces/kernelslist.g"
-        "${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_819200_txt/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_28k_4x_features_txt/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_819200_txt/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/bfs-rodinia-3.1/__data_graph4096_txt/traces/kernelslist.g"
         # DEADLOCK
         "${HW_RUN_BASE}/rodinia-3.1/11.0/bfs-rodinia-3.1/__data_graph1MW_6_txt/traces/kernelslist.g"
@@ -182,28 +183,28 @@ main() {
         "${HW_RUN_BASE}/parboil/11.0/parboil-bfs/_i___data_NY_input_graph_input_dat__o_bfs_NY_out/traces/kernelslist.g"
         "${HW_RUN_BASE}/parboil/11.0/parboil-sad/_i___data_default_input_reference_bin___data_default_input_frame_bin__o_out_bin/traces/kernelslist.g"
         # longer than 2 hours
-        "${HW_RUN_BASE}/parboil/11.0/parboil-sgemm/_i___data_medium_input_matrix1_txt___data_medium_input_matrix2t_txt___data_medium_input_matrix2t_txt__o_matrix3_txt/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/parboil/11.0/parboil-sgemm/_i___data_medium_input_matrix1_txt___data_medium_input_matrix2t_txt___data_medium_input_matrix2t_txt__o_matrix3_txt/traces/kernelslist.g"
         "${HW_RUN_BASE}/parboil/11.0/parboil-mri-gridding/_i___data_small_input_small_uks__o_output_txt____32_0/traces/kernelslist.g"
         "${HW_RUN_BASE}/parboil/11.0/parboil-stencil/_i___data_small_input_128x128x32_bin__o_128x128x32_out____128_128_32_100/traces/kernelslist.g"
         "${HW_RUN_BASE}/parboil/11.0/parboil-histo/_i___data_default_input_img_bin__o_ref_bmp____20_4/traces/kernelslist.g"
         "${HW_RUN_BASE}/parboil/11.0/parboil-cutcp/_i___data_small_input_watbox_sl40_pqr__o_lattice_dat/traces/kernelslist.g"
         #DEADLOCK
-        "${HW_RUN_BASE}/parboil/11.0/parboil-spmv/_i___data_large_input_Dubcova3_mtx_bin___data_large_input_vector_bin__o_Dubcova3_mtx_out/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/parboil/11.0/parboil-spmv/_i___data_large_input_Dubcova3_mtx_bin___data_large_input_vector_bin__o_Dubcova3_mtx_out/traces/kernelslist.g"
         "${HW_RUN_BASE}/parboil/11.0/parboil-mri-q/_i___data_small_input_32_32_32_dataset_bin__o_32_32_32_dataset_out/traces/kernelslist.g"
 
         ######### polybench 
         # longer than 2 hours
-        "${HW_RUN_BASE}/polybench/11.0/polybench-3mm/NO_ARGS/traces/kernelslist.g"
-        "${HW_RUN_BASE}/polybench/11.0/polybench-gramschmidt/NO_ARGS/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/polybench/11.0/polybench-3mm/NO_ARGS/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/polybench/11.0/polybench-gramschmidt/NO_ARGS/traces/kernelslist.g"
         # longer than 2 hours
-        "${HW_RUN_BASE}/polybench/11.0/polybench-2DConvolution/NO_ARGS/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/polybench/11.0/polybench-2DConvolution/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-atax/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-covariance/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-gesummv/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-fdtd2d/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-3DConvolution/NO_ARGS/traces/kernelslist.g"
         # longer than 2 hours
-        "${HW_RUN_BASE}/polybench/11.0/polybench-gemm/NO_ARGS/traces/kernelslist.g"
+        #"${HW_RUN_BASE}/polybench/11.0/polybench-gemm/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-bicg/NO_ARGS/traces/kernelslist.g"
         "${HW_RUN_BASE}/polybench/11.0/polybench-correlation/NO_ARGS/traces/kernelslist.g"
 
