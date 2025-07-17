@@ -66,5 +66,6 @@ class accel_sim_framework {
   // Global stream analysis data
   std::set<unsigned long long> global_unique_streams;
   std::map<unsigned long long, std::pair<unsigned, unsigned>> global_stream_core_ranges;
+  std::map<unsigned long long, std::set<unsigned>> global_stream_core_ranges_set;
 
 };

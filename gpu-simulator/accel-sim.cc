@@ -84,16 +84,24 @@ void accel_sim_framework::simulation_loop() {
                   << " at cycle: " << m_gpgpu_sim->gpu_sim_cycle << std::endl;
         
         // Apply pre-calculated global core partitioning
-        if (enable_stream_partitioning && global_stream_core_ranges.count(k->get_cuda_stream_id())) {
-          auto core_range = global_stream_core_ranges[k->get_cuda_stream_id()];
-          unsigned start_core = core_range.first;
-          unsigned end_core = core_range.second;
-          
-          std::cout << "APPLYING GLOBAL STREAM PARTITIONING: Stream " << k->get_cuda_stream_id() 
-                    << " using cores [" << start_core << "-" << end_core << "]" << std::endl;
-          
-          // Set core range for this kernel
-          m_gpgpu_sim->set_kernel_core_range(k, start_core, end_core);
+        if (enable_stream_partitioning && 
+          (global_stream_core_ranges.count(k->get_cuda_stream_id()) ||
+           global_stream_core_ranges_set.count(k->get_cuda_stream_id()))) {
+          if (m_gpgpu_sim->get_config().get_stream_intlv_core()) {
+            auto core_range = global_stream_core_ranges_set[k->get_cuda_stream_id()];
+            std::cout << "APPLYING GLOBAL STREAM PARTITIONING: Stream " << k->get_cuda_stream_id() 
+                      << " using core range: " << k->print_core_range() << std::endl;
+            // Set core range for this kernel
+            m_gpgpu_sim->set_kernel_core_range(k, core_range);
+          } else {
+            auto core_range = global_stream_core_ranges[k->get_cuda_stream_id()];
+            unsigned start_core = core_range.first;
+            unsigned end_core = core_range.second;
+            std::cout << "APPLYING GLOBAL STREAM PARTITIONING: Stream " << k->get_cuda_stream_id() 
+                      << " using cores [" << start_core << "-" << end_core << "]" << std::endl;
+            // Set core range for this kernel
+            m_gpgpu_sim->set_kernel_core_range(k, start_core, end_core);
+          }
         }
         
         m_gpgpu_sim->launch(k);
@@ -337,6 +345,7 @@ void accel_sim_framework::global_stream_analysis() {
   
   global_unique_streams.clear();
   global_stream_core_ranges.clear();
+  global_stream_core_ranges_set.clear();
   
   // Parse all kernel commands to extract stream IDs
   for (const auto& command : commandlist) {
@@ -379,6 +388,19 @@ void accel_sim_framework::global_stream_analysis() {
       
       global_stream_core_ranges[stream_id] = std::make_pair(start_core, end_core);
       
+      std::cout << "GLOBAL: STREAM " << stream_id << " -> cores [" << start_core << "-" << end_core << "]" << std::endl;
+    }
+
+    // Pre-calculate core ranges for each stream
+    for (unsigned i = 0; i < stream_list.size(); i++) {
+      std::set<unsigned> core_range;
+      unsigned long long stream_id = stream_list[i];
+      unsigned start_core = stream_id == 0 ? 0 :1;
+      unsigned end_core = stream_id == 0 ? total_cores -2 : total_cores -1;
+      for (unsigned core = start_core; core <= end_core; core+=2) {
+        core_range.insert(core);
+      }
+      global_stream_core_ranges_set[stream_id] = core_range;
       std::cout << "GLOBAL: STREAM " << stream_id << " -> cores [" << start_core << "-" << end_core << "]" << std::endl;
     }
   } else {
