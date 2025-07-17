@@ -84,14 +84,19 @@ generate_mixed_command() {
     
     local log_file="$LOG_DIR/${mix_type}_${safe_app1}_${safe_variant1}_${safe_app2}_${safe_variant2}.log"
     
-    # Generate the command
+    # Generate the command with 2-hour timeout
     echo "# $mix_type: $app1_name ($app1_variant) + $app2_name ($app2_variant)"
     echo "echo \"Running $mix_type: $app1_name ($app1_variant) + $app2_name ($app2_variant)\""
-    echo "$ACCEL_SIM \\"
+    echo "timeout 2h $ACCEL_SIM \\"
     echo "    -config \"$GPUGPUSIM_CONFIG\" \\"
     echo "    -config \"$TRACE_CONFIG\" \\"
     echo "    -trace \"$trace1 $trace2\" > \"$log_file\" 2>&1"
-    echo "echo \"Completed $mix_type: $app1_name + $app2_name (log: $log_file)\""
+    echo "timeout_status=\$?"
+    echo "if [ \$timeout_status -eq 124 ]; then"
+    echo "    echo \"TIMEOUT: $mix_type: $app1_name + $app2_name exceeded 2-hour limit (log: $log_file)\""
+    echo "else"
+    echo "    echo \"Completed $mix_type: $app1_name + $app2_name (log: $log_file)\""
+    echo "fi"
     echo ""
 }
 
