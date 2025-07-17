@@ -169,6 +169,7 @@ main() {
         # longer than 2 hours
         #"${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_28k_4x_features_txt/traces/kernelslist.g"
         #"${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_819200_txt/traces/kernelslist.g"
+        "${HW_RUN_BASE}/rodinia-3.1/11.0/kmeans-rodinia-3.1/_o__i___data_28k_4x_features_cut/traces/kernelslist.g"
         "${HW_RUN_BASE}/rodinia-3.1/11.0/bfs-rodinia-3.1/__data_graph4096_txt/traces/kernelslist.g"
         # DEADLOCK
         "${HW_RUN_BASE}/rodinia-3.1/11.0/bfs-rodinia-3.1/__data_graph1MW_6_txt/traces/kernelslist.g"
