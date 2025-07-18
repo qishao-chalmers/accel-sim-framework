@@ -267,10 +267,10 @@ def compare_performance(metric_name, configs=None):
                 row += f"{'-':<15}"
                 workload_data[config] = None
         
-        # Second pass: calculate percentage improvements over 'run' baseline
-        baseline = workload_data.get('128k_cache')
+        # Second pass: calculate percentage improvements over first configuration baseline
+        baseline = workload_data.get(valid_configs[0]) if valid_configs else None
         for config in valid_configs:
-            if config != 'cache':
+            if config != valid_configs[0]:  # Skip the baseline configuration itself
                 current_value = workload_data.get(config)
                 if baseline is not None and baseline != 0 and current_value is not None:
                     improvement = 100.0 * (current_value - baseline) / baseline
@@ -299,7 +299,7 @@ def compare_performance(metric_name, configs=None):
     
     # Calculate geometric mean for improvements
     for config in valid_configs:
-        if config != 'run' and config != 'cache':
+        if config != valid_configs[0]:  # Skip the baseline configuration itself
             improvements = [data.get(config) for data in improvement_data.values()]
             valid_improvements = [imp for imp in improvements if imp is not None]
             if valid_improvements:
@@ -324,7 +324,7 @@ def compare_performance(metric_name, configs=None):
         valid_data = {k: v for k, v in data.items() if v is not None}
         if valid_data:
             best_config = max(valid_data, key=valid_data.get)
-            baseline = valid_data.get('run')
+            baseline = valid_data.get(valid_configs[0]) if valid_configs else None
             
             if baseline is not None and baseline != 0:
                 improvement = 100.0 * (valid_data[best_config] - baseline) / baseline
