@@ -32,6 +32,8 @@ class accel_sim_framework {
   void cleanup(unsigned finished_kernel);
   unsigned simulate();
   void global_stream_analysis();  // Global stream analysis function
+  void store_original_commands_by_stream();  // Store original commands for each stream
+  void restart_completed_stream(unsigned long long stream_id);  // Restart a completed stream
   trace_kernel_info_t *create_kernel_info(kernel_trace_t *kernel_trace_info,
                                           gpgpu_context *m_gpgpu_context,
                                           trace_config *config,
@@ -67,5 +69,12 @@ class accel_sim_framework {
   std::set<unsigned long long> global_unique_streams;
   std::map<unsigned long long, std::pair<unsigned, unsigned>> global_stream_core_ranges;
   std::map<unsigned long long, std::set<unsigned>> global_stream_core_ranges_set;
+
+  // Stream repetition and completion tracking
+  std::map<unsigned long long, bool> stream_completed;  // Track if a stream has completed its original workload
+  std::map<unsigned long long, unsigned> stream_repetition_count;  // Track how many times each stream has been repeated
+  std::map<unsigned long long, std::vector<trace_command>> stream_original_commands;  // Store original commands for each stream
+  unsigned max_repetitions;  // Maximum number of repetitions allowed (0 = no repetition)
+  bool enable_stream_repetition;  // Flag to enable/disable stream repetition
 
 };

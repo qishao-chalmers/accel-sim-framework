@@ -213,6 +213,17 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
           }
         }
       }
+      
+      // Check if this stream has completed all its original kernels
+      if (stream_kernel_map[k->get_cuda_stream_id()] == 0 && !stream_completed[k->get_cuda_stream_id()]) {
+        stream_completed[k->get_cuda_stream_id()] = true;
+        std::cout << "Stream " << k->get_cuda_stream_id() << " has completed its original workload" << std::endl;
+        
+        // Check if we should restart this stream
+        if (enable_stream_repetition) {
+          restart_completed_stream(k->get_cuda_stream_id());
+        }
+      }
       tracer.kernel_finalizer(k->get_trace_info());
       delete k->entry();
       delete k;
@@ -223,8 +234,19 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
   }
   assert(k);
   m_gpgpu_sim->print_stats(finished_kernel_cuda_stream_id);
-  // end the simulation
-  if (end_of_one_stream) {
+  
+  // Check if all streams have completed and no more commands are available
+  bool all_streams_completed = true;
+  for (auto stream_id : global_unique_streams) {
+    if (!stream_completed[stream_id] || stream_repetition_count[stream_id] < max_repetitions) {
+      all_streams_completed = false;
+      break;
+    }
+  }
+  
+  // Only exit if all streams have completed their maximum repetitions
+  if (end_of_one_stream && all_streams_completed && commandlist_index >= commandlist.size()) {
+    std::cout << "=== ALL STREAMS COMPLETED MAXIMUM REPETITIONS - ENDING SIMULATION ===" << std::endl;
     exit(0);
   }
 }
@@ -292,6 +314,14 @@ gpgpu_sim *accel_sim_framework::gpgpu_trace_sim_init_perf_model(
       opp);  // register GPU microrachitecture options
   m_config->reg_options(opp);
 
+  // Add stream repetition options
+  option_parser_register(opp, "-enable_stream_repetition", OPT_BOOL, &enable_stream_repetition,
+                        "Enable automatic restart of completed streams until longest stream finishes (default: true)",
+                        "true");
+  option_parser_register(opp, "-max_stream_repetitions", OPT_UINT32, &max_repetitions,
+                        "Maximum number of times a stream can be repeated (default: 10)",
+                        "10");
+
   option_parser_cmdline(opp, argc, argv);  // parse configuration options
   fprintf(stdout, "GPGPU-Sim: Configuration options:\n\n");
   option_parser_print(opp, stdout);
@@ -336,8 +366,21 @@ void accel_sim_framework::init() {
 
   kernels_info.reserve(window_size);
   
+  // Initialize stream repetition variables
+  enable_stream_repetition = true;  // Enable by default, can be made configurable
+  max_repetitions = 10;  // Default max repetitions, can be made configurable
+  
   // GLOBAL STREAM ANALYSIS: Analyze all commands to find total unique streams
   global_stream_analysis();
+  
+  // Initialize stream tracking
+  for (auto stream_id : global_unique_streams) {
+    stream_completed[stream_id] = false;
+    stream_repetition_count[stream_id] = 0;
+  }
+  
+  // Store original commands for each stream
+  store_original_commands_by_stream();
 }
 
 void accel_sim_framework::global_stream_analysis() {
@@ -408,4 +451,64 @@ void accel_sim_framework::global_stream_analysis() {
   }
   
   std::cout << "=== END GLOBAL STREAM ANALYSIS ===" << std::endl;
+}
+
+void accel_sim_framework::store_original_commands_by_stream() {
+  std::cout << "=== STORING ORIGINAL COMMANDS BY STREAM ===" << std::endl;
+  
+  // Clear any existing stored commands
+  stream_original_commands.clear();
+  
+  // Group commands by stream ID
+  for (const auto& command : commandlist) {
+    if (command.m_type == command_type::kernel_launch) {
+      // Parse the kernel header to get stream ID
+      kernel_trace_t *kernel_trace_info = tracer.parse_kernel_info(command.command_string);
+      if (kernel_trace_info) {
+        unsigned long long stream_id;
+        if (is_multi_trace) {
+          stream_id = command.trace_id;
+        } else {
+          stream_id = kernel_trace_info->cuda_stream_id;
+        }
+        
+        // Store the command for this stream
+        stream_original_commands[stream_id].push_back(command);
+        std::cout << "Stored command for stream " << stream_id << ": " << command.command_string << std::endl;
+      }
+    }
+  }
+  
+  std::cout << "=== END STORING ORIGINAL COMMANDS ===" << std::endl;
+}
+
+void accel_sim_framework::restart_completed_stream(unsigned long long stream_id) {
+  if (!enable_stream_repetition || stream_repetition_count[stream_id] >= max_repetitions) {
+    std::cout << "Stream " << stream_id << " will not be restarted (repetition limit reached or disabled)" << std::endl;
+    return;
+  }
+  
+  std::cout << "=== RESTARTING STREAM " << stream_id << " (repetition " 
+            << (stream_repetition_count[stream_id] + 1) << "/" << max_repetitions << ") ===" << std::endl;
+  
+  // Get the original commands for this stream
+  auto& original_commands = stream_original_commands[stream_id];
+  if (original_commands.empty()) {
+    std::cout << "No original commands found for stream " << stream_id << std::endl;
+    return;
+  }
+  
+  // Append the original commands to the end of the commandlist
+  for (const auto& command : original_commands) {
+    commandlist.push_back(command);
+    std::cout << "Added command to restart stream " << stream_id << ": " << command.command_string << std::endl;
+  }
+  
+  // Update repetition count
+  stream_repetition_count[stream_id]++;
+  
+  // Mark stream as not completed for the new iteration
+  stream_completed[stream_id] = false;
+  
+  std::cout << "=== STREAM " << stream_id << " RESTARTED ===" << std::endl;
 }

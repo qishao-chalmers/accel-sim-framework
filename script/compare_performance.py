@@ -340,7 +340,8 @@ def compare_performance(metric_name, configs=None):
     print()
     print("=== Summary ===")
     print(f"Legend: Higher {metric_name} values indicate better performance")
-    print("Percentage columns show improvement over '128k_cache' baseline configuration")
+    baseline_config = get_config_abbreviation(valid_configs[0]) if valid_configs else "N/A"
+    print(f"Percentage columns show improvement over '{baseline_config}' baseline configuration (first in list)")
     print(f"{metric_name} values are compared at the last common sequence ID across configurations with valid data")
     print("This ensures fair comparison even when different configs have different run times or missing metrics")
     print("Configurations without the metric are marked with '-' and excluded from sequence ID calculation")
