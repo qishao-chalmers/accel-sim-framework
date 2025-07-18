@@ -125,7 +125,32 @@ EOF
 # Generate all mixed combinations
 echo "Generating mixed trace commands..."
 
-# 1. friendly + friendly
+
+# 1. friendly + unfriendly
+echo "# ================================================================" >> "$COMMANDS_FILE"
+echo "# FRIENDLY + UNFRIENDLY COMBINATIONS" >> "$COMMANDS_FILE"
+echo "# ================================================================" >> "$COMMANDS_FILE"
+echo "" >> "$COMMANDS_FILE"
+
+for i in "${!traces_share_friendly[@]}"; do
+    for j in "${!traces_share_unfriendly[@]}"; do
+        generate_mixed_command "${traces_share_friendly[$i]}" "${traces_share_unfriendly[$j]}" "fr_unfr" >> "$COMMANDS_FILE"
+    done
+done
+
+# 2. friendly + nonfeeling
+echo "# ================================================================" >> "$COMMANDS_FILE"
+echo "# FRIENDLY + NONFEELING COMBINATIONS" >> "$COMMANDS_FILE"
+echo "# ================================================================" >> "$COMMANDS_FILE"
+echo "" >> "$COMMANDS_FILE"
+
+for i in "${!traces_share_friendly[@]}"; do
+    for j in "${!traces_share_nonfeeling[@]}"; do
+        generate_mixed_command "${traces_share_friendly[$i]}" "${traces_share_nonfeeling[$j]}" "fr_non" >> "$COMMANDS_FILE"
+    done
+done
+
+# 3. friendly + friendly
 echo "# ================================================================" >> "$COMMANDS_FILE"
 echo "# FRIENDLY + FRIENDLY COMBINATIONS" >> "$COMMANDS_FILE"
 echo "# ================================================================" >> "$COMMANDS_FILE"
@@ -134,32 +159,8 @@ echo "" >> "$COMMANDS_FILE"
 for i in "${!traces_share_friendly[@]}"; do
     for j in "${!traces_share_friendly[@]}"; do
         if [[ $i -lt $j ]]; then  # Avoid duplicates and self-pairs
-            generate_mixed_command "${traces_share_friendly[$i]}" "${traces_share_friendly[$j]}" "friendly_friendly" >> "$COMMANDS_FILE"
+            generate_mixed_command "${traces_share_friendly[$i]}" "${traces_share_friendly[$j]}" "fr_fr" >> "$COMMANDS_FILE"
         fi
-    done
-done
-
-# 2. friendly + unfriendly
-echo "# ================================================================" >> "$COMMANDS_FILE"
-echo "# FRIENDLY + UNFRIENDLY COMBINATIONS" >> "$COMMANDS_FILE"
-echo "# ================================================================" >> "$COMMANDS_FILE"
-echo "" >> "$COMMANDS_FILE"
-
-for i in "${!traces_share_friendly[@]}"; do
-    for j in "${!traces_share_unfriendly[@]}"; do
-        generate_mixed_command "${traces_share_friendly[$i]}" "${traces_share_unfriendly[$j]}" "friendly_unfriendly" >> "$COMMANDS_FILE"
-    done
-done
-
-# 3. friendly + nonfeeling
-echo "# ================================================================" >> "$COMMANDS_FILE"
-echo "# FRIENDLY + NONFEELING COMBINATIONS" >> "$COMMANDS_FILE"
-echo "# ================================================================" >> "$COMMANDS_FILE"
-echo "" >> "$COMMANDS_FILE"
-
-for i in "${!traces_share_friendly[@]}"; do
-    for j in "${!traces_share_nonfeeling[@]}"; do
-        generate_mixed_command "${traces_share_friendly[$i]}" "${traces_share_nonfeeling[$j]}" "friendly_nonfeeling" >> "$COMMANDS_FILE"
     done
 done
 
@@ -172,7 +173,7 @@ echo "" >> "$COMMANDS_FILE"
 for i in "${!traces_share_unfriendly[@]}"; do
     for j in "${!traces_share_unfriendly[@]}"; do
         if [[ $i -lt $j ]]; then  # Avoid duplicates and self-pairs
-            generate_mixed_command "${traces_share_unfriendly[$i]}" "${traces_share_unfriendly[$j]}" "unfriendly_unfriendly" >> "$COMMANDS_FILE"
+            generate_mixed_command "${traces_share_unfriendly[$i]}" "${traces_share_unfriendly[$j]}" "unfr_unfr" >> "$COMMANDS_FILE"
         fi
     done
 done
@@ -185,7 +186,7 @@ echo "" >> "$COMMANDS_FILE"
 
 for i in "${!traces_share_unfriendly[@]}"; do
     for j in "${!traces_share_nonfeeling[@]}"; do
-        generate_mixed_command "${traces_share_unfriendly[$i]}" "${traces_share_nonfeeling[$j]}" "unfriendly_nonfeeling" >> "$COMMANDS_FILE"
+        generate_mixed_command "${traces_share_unfriendly[$i]}" "${traces_share_nonfeeling[$j]}" "unfr_non" >> "$COMMANDS_FILE"
     done
 done
 
@@ -198,7 +199,7 @@ echo "" >> "$COMMANDS_FILE"
 for i in "${!traces_share_nonfeeling[@]}"; do
     for j in "${!traces_share_nonfeeling[@]}"; do
         if [[ $i -lt $j ]]; then  # Avoid duplicates and self-pairs
-            generate_mixed_command "${traces_share_nonfeeling[$i]}" "${traces_share_nonfeeling[$j]}" "nonfeeling_nonfeeling" >> "$COMMANDS_FILE"
+            generate_mixed_command "${traces_share_nonfeeling[$i]}" "${traces_share_nonfeeling[$j]}" "non_non" >> "$COMMANDS_FILE"
         fi
     done
 done

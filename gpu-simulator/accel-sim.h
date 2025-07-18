@@ -74,6 +74,8 @@ class accel_sim_framework {
   std::map<unsigned long long, bool> stream_completed;  // Track if a stream has completed its original workload
   std::map<unsigned long long, unsigned> stream_repetition_count;  // Track how many times each stream has been repeated
   std::map<unsigned long long, std::vector<trace_command>> stream_original_commands;  // Store original commands for each stream
+  std::set<unsigned long long> stream_completed_set;  // Track if a stream has completed its original workload
+  unsigned pending_stream_count = 0;  // Count of streams that have been launched but not completed yet
   unsigned max_repetitions;  // Maximum number of repetitions allowed (0 = no repetition)
   bool enable_stream_repetition;  // Flag to enable/disable stream repetition
 

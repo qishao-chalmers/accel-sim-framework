@@ -198,7 +198,8 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
 
       stream_kernel_map[k->get_cuda_stream_id()]--;
       if (m_gpgpu_sim->getShaderCoreConfig()->gpgpu_stream_partitioning&&
-        stream_kernel_map[k->get_cuda_stream_id()] == 0) {
+        stream_kernel_map[k->get_cuda_stream_id()] == 0
+         && !enable_stream_repetition) {
         // since we only support two stream partitioning modes,
         // we will allocate all the gpus cores to the other stream
         for (unsigned i = 0; i < kernels_info.size(); i++){
@@ -368,7 +369,7 @@ void accel_sim_framework::init() {
   
   // Initialize stream repetition variables
   enable_stream_repetition = true;  // Enable by default, can be made configurable
-  max_repetitions = 10;  // Default max repetitions, can be made configurable
+  max_repetitions = 100000;  // Default max repetitions, can be made configurable
   
   // GLOBAL STREAM ANALYSIS: Analyze all commands to find total unique streams
   global_stream_analysis();
@@ -377,6 +378,7 @@ void accel_sim_framework::init() {
   for (auto stream_id : global_unique_streams) {
     stream_completed[stream_id] = false;
     stream_repetition_count[stream_id] = 0;
+    pending_stream_count++;
   }
   
   // Store original commands for each stream
@@ -485,6 +487,16 @@ void accel_sim_framework::store_original_commands_by_stream() {
 void accel_sim_framework::restart_completed_stream(unsigned long long stream_id) {
   if (!enable_stream_repetition || stream_repetition_count[stream_id] >= max_repetitions) {
     std::cout << "Stream " << stream_id << " will not be restarted (repetition limit reached or disabled)" << std::endl;
+    return;
+  }
+
+  if (stream_completed_set.count(stream_id) == 0) {
+    stream_completed_set.insert(stream_id);
+    pending_stream_count--;
+  }
+
+  if (pending_stream_count == 0) {
+    std::cout << "=== ALL STREAMS COMPLETED MAXIMUM REPETITIONS - ENDING SIMULATION ===" << std::endl;
     return;
   }
   
