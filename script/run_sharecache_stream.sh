@@ -76,21 +76,21 @@ generate_mixed_command() {
     read -r app1_name app1_variant < <(get_app_info "$trace1")
     read -r app2_name app2_variant < <(get_app_info "$trace2")
     
-    # Create safe names for log file
-    local safe_app1=$(echo "$app1_name" | sed 's/[^a-zA-Z0-9_-]/_/g')
-    local safe_variant1=$(echo "$app1_variant" | sed 's/[^a-zA-Z0-9_-]/_/g')
-    local safe_app2=$(echo "$app2_name" | sed 's/[^a-zA-Z0-9_-]/_/g')
-    local safe_variant2=$(echo "$app2_variant" | sed 's/[^a-zA-Z0-9_-]/_/g')
+    # Create safe names for log file (limit to 15 characters each)
+    local safe_app1=$(echo "$app1_name" | sed 's/[^a-zA-Z0-9_-]/_/g' | cut -c1-20)
+    local safe_variant1=$(echo "$app1_variant" | sed 's/[^a-zA-Z0-9_-]/_/g'| cut -c1-5)
+    local safe_app2=$(echo "$app2_name" | sed 's/[^a-zA-Z0-9_-]/_/g' | cut -c1-20)
+    local safe_variant2=$(echo "$app2_variant" | sed 's/[^a-zA-Z0-9_-]/_/g'| cut -c1-5)
     
     local log_file="$LOG_DIR/${mix_type}_${safe_app1}_${safe_variant1}_${safe_app2}_${safe_variant2}.log"
     
     # Generate the command with 2-hour timeout
     echo "# $mix_type: $app1_name ($app1_variant) + $app2_name ($app2_variant)"
     echo "echo \"Running $mix_type: $app1_name ($app1_variant) + $app2_name ($app2_variant)\""
-    echo "timeout 2h $ACCEL_SIM \\"
+    echo "timeout 20m bash -c '$ACCEL_SIM \\"
     echo "    -config \"$GPUGPUSIM_CONFIG\" \\"
     echo "    -config \"$TRACE_CONFIG\" \\"
-    echo "    -trace \"$trace1 $trace2\" > \"$log_file\" 2>&1"
+    echo "    -trace \"$trace1 $trace2\" > \"$log_file\" 2>&1'"
     echo "timeout_status=\$?"
     echo "if [ \$timeout_status -eq 124 ]; then"
     echo "    echo \"TIMEOUT: $mix_type: $app1_name + $app2_name exceeded 2-hour limit (log: $log_file)\""

@@ -198,20 +198,23 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
 
       stream_kernel_map[k->get_cuda_stream_id()]--;
       if (m_gpgpu_sim->getShaderCoreConfig()->gpgpu_stream_partitioning&&
-        stream_kernel_map[k->get_cuda_stream_id()] == 0
-         && !enable_stream_repetition) {
-        // since we only support two stream partitioning modes,
-        // we will allocate all the gpus cores to the other stream
-        for (unsigned i = 0; i < kernels_info.size(); i++){
-          if (kernels_info[i]->get_cuda_stream_id() != k->get_cuda_stream_id()) {
-            unsigned start_core = 0;
-            unsigned end_core = m_gpgpu_sim->get_config().num_shader();
-            m_gpgpu_sim->set_kernel_core_range(kernels_info[i], start_core, end_core);
-            printf("Stream %llu has no more kernels, allocating all cores to stream %llu\n",
-                   k->get_cuda_stream_id(), kernels_info[i]->get_cuda_stream_id());
-            m_gpgpu_sim->release_core_range_limit();
-            end_of_one_stream = true;
-          }
+        stream_kernel_map[k->get_cuda_stream_id()] == 0) {
+        if (enable_stream_repetition) {
+            m_gpgpu_sim->restart_stream(k->get_cuda_stream_id());
+        } else {
+            // since we only support two stream partitioning modes,
+            // we will allocate all the gpus cores to the other stream
+            for (unsigned i = 0; i < kernels_info.size(); i++){
+              if (kernels_info[i]->get_cuda_stream_id() != k->get_cuda_stream_id()) {
+                unsigned start_core = 0;
+                unsigned end_core = m_gpgpu_sim->get_config().num_shader();
+                m_gpgpu_sim->set_kernel_core_range(kernels_info[i], start_core, end_core);
+                printf("Stream %llu has no more kernels, allocating all cores to stream %llu\n",
+                       k->get_cuda_stream_id(), kernels_info[i]->get_cuda_stream_id());
+                m_gpgpu_sim->release_core_range_limit();
+                end_of_one_stream = true;
+              }
+            }
         }
       }
       
@@ -321,7 +324,7 @@ gpgpu_sim *accel_sim_framework::gpgpu_trace_sim_init_perf_model(
                         "true");
   option_parser_register(opp, "-max_stream_repetitions", OPT_UINT32, &max_repetitions,
                         "Maximum number of times a stream can be repeated (default: 10)",
-                        "10");
+                        "1000000");
 
   option_parser_cmdline(opp, argc, argv);  // parse configuration options
   fprintf(stdout, "GPGPU-Sim: Configuration options:\n\n");
