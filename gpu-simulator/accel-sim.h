@@ -20,6 +20,8 @@
 #include "option_parser.h"
 #include "trace_driven.h"
 
+extern unsigned stream_num;
+
 class accel_sim_framework {
  public:
   accel_sim_framework(int argc, const char **argv);

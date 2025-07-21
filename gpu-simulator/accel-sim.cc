@@ -1,6 +1,8 @@
 #include "accel-sim.h"
 #include "accelsim_version.h"
 
+unsigned stream_num = 1;
+
 accel_sim_framework::accel_sim_framework(std::string config_file,
                                           std::string trace_file) {
   std::cout << "Accel-Sim [build " << g_accelsim_version << "]";
@@ -416,6 +418,8 @@ void accel_sim_framework::global_stream_analysis() {
   unsigned total_cores = m_gpgpu_sim->get_config().num_shader();
   unsigned num_streams = global_unique_streams.size();
   
+  stream_num = global_unique_streams.size();
+
   if (num_streams > 1) {
     unsigned cores_per_stream = total_cores / num_streams;
     

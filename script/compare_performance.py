@@ -132,6 +132,8 @@ def get_config_abbreviation(config):
         '64k_cache': '64K',
         '128k_64B_cache': '128K-64B',
         '128k_sector_cache': '128K-Sector',
+        '128k_share_cache':'128k-S',
+        '128k_share_nonflush_cache':'128k-FLUSH-S',
         '128k_sector_64B_cache': '128K-S64B',
         '128k_sector_64B_cache_new': '128K-S64B-N',
         '128k_sector_128B_cache': '128K-S128B',
@@ -143,6 +145,10 @@ def get_config_abbreviation(config):
         '128k_dynamic_fetch_64_cache': '128K-DF64',
         '128k_dynamic_fetch_96_cache': '128K-DF96',
         '128k_dynamic_fetch_128_cache': '128K-DF128',
+        '128k_share_nonintlv_cache': '128_iso',
+        '128k_share_intlv_cache':'128_intlv',
+        '128k_share_intlv_bypass_cache':'128_il_bp1',
+        '128k_share_intlv_bypass0_cache':'128_il_bp0',
         'bypass_l1cache': 'Bypass-L1',
         'run_128k_cache': '128K',
         'run_256k_cache': '256K',
@@ -218,76 +224,83 @@ def compare_performance(metric_name, configs=None):
     for config in valid_configs:
         display_name = get_config_abbreviation(config)
         header += f"{display_name:<15}"
+    base_abbr = get_config_abbreviation(valid_configs[0])
     for config in valid_configs:
-        if config != 'run' and config != 'cache':
+        if config != valid_configs[0]:  # Only show improvement columns for non-base configs
             display_name = get_config_abbreviation(config)
-            header += f"{display_name:<15}"
+            header += f"{display_name + ' vs ' + base_abbr:<15}"
+    header += f"{'BestImp vs ' + base_abbr:<15}{'BestConfig':<15}"
     print(header)
-    
+
     # Print separator
     separator = "-" * 53
     for config in valid_configs:
         separator += "-" * 15
     for config in valid_configs:
-        if config != 'run' and config != 'cache':
+        if config != valid_configs[0]:
             separator += "-" * 15
+    separator += "-" * 15 * 2
     print(separator)
-    
+
     # Collect data for analysis
     performance_data = defaultdict(dict)
     improvement_data = defaultdict(dict)
-    
+    best_improvement_list = []
+
     # For each workload, compare metric across configurations
     for workload in workloads:
         # Find the last common sequence ID for this workload across configurations that have the metric
-        # This ensures we compare metrics from the same point in execution across configs with valid data
         common_sequence_id = get_common_sequence_id(workload, valid_configs, metric_name)
-        
         if common_sequence_id is not None:
-            #print(f"Debug: {workload} using last common sequence ID {common_sequence_id}")
             pass
         else:
-            #print(f"Debug: {workload} - no valid metric data found in any configuration")
             continue  # Skip this workload if no valid data exists
-        
-        # Truncate workload name for display
         display_workload = truncate_workload_name(workload, 50)
         row = f"{display_workload:<53}"
         workload_data = {}
-        
         # First pass: collect all metric values at the last common sequence ID
         for config in valid_configs:
             log_file = f"./{config}/logs/{workload}.log"
             metric_value = extract_metric(log_file, metric_name, common_sequence_id)
-            
             if metric_value is not None:
                 row += f"{metric_value:<15.4f}"
                 workload_data[config] = metric_value
             else:
                 row += f"{'-':<15}"
                 workload_data[config] = None
-        
         # Second pass: calculate percentage improvements over first configuration baseline
-        baseline = workload_data.get(valid_configs[0]) if valid_configs else None
+        baseline = workload_data.get(valid_configs[0])
         for config in valid_configs:
-            if config != valid_configs[0]:  # Skip the baseline configuration itself
+            if config != valid_configs[0]:  # Skip the baseline configuration
                 current_value = workload_data.get(config)
                 if baseline is not None and baseline != 0 and current_value is not None:
                     improvement = 100.0 * (current_value - baseline) / baseline
-                    #row += f"{improvement:>+8.2f}%      "
                     row += f"{improvement:>8.2f}%      "
                     improvement_data[workload][config] = improvement
                 else:
                     row += f"{'-':<15}"
                     improvement_data[workload][config] = None
-        
+        # Find best configuration for this workload
+        valid_data = {k: v for k, v in workload_data.items() if v is not None}
+        if valid_data:
+            best_config = max(valid_data, key=valid_data.get)
+            best_value = valid_data[best_config]
+            if baseline is not None and baseline != 0:
+                best_improvement = 100.0 * (best_value - baseline) / baseline
+                row += f"{best_improvement:>8.2f}%      "
+                best_improvement_list.append(best_improvement)
+            else:
+                row += f"{'-':<15}"
+            best_display_name = get_config_abbreviation(best_config)
+            row += f"{best_display_name:<15}"
+        else:
+            row += f"{'-':<15}{'-':<15}"
         print(row)
         performance_data[workload] = workload_data
-    
+
     # Print geometric mean row
     print(separator)
     geo_mean_row = f"{'Geometric Mean':<53}"
-    
     # Calculate geometric mean for each configuration
     for config in valid_configs:
         values = [data.get(config) for data in performance_data.values()]
@@ -296,14 +309,12 @@ def compare_performance(metric_name, configs=None):
             geo_mean_row += f"{geo_mean:<15.4f}"
         else:
             geo_mean_row += f"{'-':<15}"
-    
     # Calculate geometric mean for improvements
     for config in valid_configs:
-        if config != valid_configs[0]:  # Skip the baseline configuration itself
+        if config != valid_configs[0]:  # Skip the baseline configuration
             improvements = [data.get(config) for data in improvement_data.values()]
             valid_improvements = [imp for imp in improvements if imp is not None]
             if valid_improvements:
-                # Convert percentage improvements to ratios for geometric mean
                 ratios = [(100 + imp) / 100 for imp in valid_improvements]
                 geo_mean_ratio = calculate_geometric_mean(ratios)
                 if geo_mean_ratio is not None:
@@ -313,7 +324,18 @@ def compare_performance(metric_name, configs=None):
                     geo_mean_row += f"{'-':<15}"
             else:
                 geo_mean_row += f"{'-':<15}"
-    
+    # Geomean for best improvement
+    if best_improvement_list:
+        ratios = [(100 + imp) / 100 for imp in best_improvement_list]
+        geo_mean_ratio = calculate_geometric_mean(ratios)
+        if geo_mean_ratio is not None:
+            geo_mean_improvement = (geo_mean_ratio - 1) * 100
+            geo_mean_row += f"{geo_mean_improvement:>8.2f}%      "
+        else:
+            geo_mean_row += f"{'-':<15}"
+    else:
+        geo_mean_row += f"{'-':<15}"
+    geo_mean_row += f"{'-':<15}"
     print(geo_mean_row)
     
     print()
@@ -324,7 +346,7 @@ def compare_performance(metric_name, configs=None):
         valid_data = {k: v for k, v in data.items() if v is not None}
         if valid_data:
             best_config = max(valid_data, key=valid_data.get)
-            baseline = valid_data.get(valid_configs[0]) if valid_configs else None
+            baseline = valid_data.get(valid_configs[0])
             
             if baseline is not None and baseline != 0:
                 improvement = 100.0 * (valid_data[best_config] - baseline) / baseline
@@ -340,8 +362,8 @@ def compare_performance(metric_name, configs=None):
     print()
     print("=== Summary ===")
     print(f"Legend: Higher {metric_name} values indicate better performance")
-    baseline_config = get_config_abbreviation(valid_configs[0]) if valid_configs else "N/A"
-    print(f"Percentage columns show improvement over '{baseline_config}' baseline configuration (first in list)")
+    baseline_config = get_config_abbreviation(valid_configs[0])
+    print(f"Percentage columns show improvement over '{baseline_config}' baseline configuration (first configuration)")
     print(f"{metric_name} values are compared at the last common sequence ID across configurations with valid data")
     print("This ensures fair comparison even when different configs have different run times or missing metrics")
     print("Configurations without the metric are marked with '-' and excluded from sequence ID calculation")
