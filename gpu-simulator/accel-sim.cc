@@ -3,6 +3,8 @@
 
 unsigned stream_num = 1;
 
+std::vector<trace_kernel_info_t *> kernels_info;
+
 accel_sim_framework::accel_sim_framework(std::string config_file,
                                           std::string trace_file) {
   std::cout << "Accel-Sim [build " << g_accelsim_version << "]";
@@ -89,7 +91,13 @@ void accel_sim_framework::simulation_loop() {
         if (enable_stream_partitioning && 
           (global_stream_core_ranges.count(k->get_cuda_stream_id()) ||
            global_stream_core_ranges_set.count(k->get_cuda_stream_id()))) {
-          if (m_gpgpu_sim->get_config().get_stream_intlv_core()) {
+          if (m_gpgpu_sim->get_config().get_dynamic_core_scheduling()) {
+            auto core_range = global_dynamic_core_ranges[k->get_cuda_stream_id()];
+            std::cout << "APPLYING DYNAMIC CORE PARTITIONING: Stream " << k->get_cuda_stream_id() 
+                      << " using core range: " << k->print_core_range() << std::endl;
+            // Set core range for this kernel
+            m_gpgpu_sim->set_kernel_core_range(k, core_range);
+          } else if (m_gpgpu_sim->get_config().get_stream_intlv_core()) {
             auto core_range = global_stream_core_ranges_set[k->get_cuda_stream_id()];
             std::cout << "APPLYING GLOBAL STREAM PARTITIONING: Stream " << k->get_cuda_stream_id() 
                       << " using core range: " << k->print_core_range() << std::endl;
@@ -394,6 +402,7 @@ void accel_sim_framework::global_stream_analysis() {
   std::cout << "=== GLOBAL STREAM ANALYSIS ===" << std::endl;
   
   global_unique_streams.clear();
+  global_dynamic_core_ranges.clear();
   global_stream_core_ranges.clear();
   global_stream_core_ranges_set.clear();
   
@@ -429,7 +438,7 @@ void accel_sim_framework::global_stream_analysis() {
     // Create sorted stream list for consistent core assignment
     std::vector<unsigned long long> stream_list(global_unique_streams.begin(), global_unique_streams.end());
     std::sort(stream_list.begin(), stream_list.end());
-    
+
     // Pre-calculate core ranges for each stream
     for (unsigned i = 0; i < stream_list.size(); i++) {
       unsigned long long stream_id = stream_list[i];
@@ -455,12 +464,71 @@ void accel_sim_framework::global_stream_analysis() {
       global_stream_core_ranges_set[stream_id] = core_range;
       std::cout << "GLOBAL: STREAM " << stream_id << " -> cores [" << start_core << "-" << end_core << "]" << std::endl;
     }
+
+
+    // for two streams, in the beginning, we will first allocate 40% of cores to two streams in interleaved mode    
+    // consider SM pairs:
+    // SM0/SM1 will be shared by two streams, sharing L1 cache
+    // SM2/SM3 will be shared by two streams, SM2 bypasses L1 cache
+    // SM4/SM5 will be shared by two streams, SM5 bypasses L1 cache
+    // SM6/SM7 will be used by stream 0 exclusively, sharing L1 cache
+    // SM8/SM9 will be used by stream 1 exclusively, sharing L1 cache
+    // stream 0 will be using: 0,2,4,6,7
+    // stream 1 will be using: 1,3,5,8,9
+
+    for (unsigned i = 0; i < num_streams; i++) {
+      unsigned long long stream_id = stream_list[i];
+      unsigned start_core = stream_id == 0 ? 0 : 1;
+      unsigned end_core = total_cores - 1;
+
+      std::set<unsigned> core_range;
+      for (unsigned core = start_core; core <= end_core; core+=10) {
+        core_range.insert(core);
+        if (stream_id == 0) {
+          if (core + 2 <= end_core)
+          core_range.insert(core + 2);
+          if (core + 4 <= end_core)
+          core_range.insert(core + 4);
+          if (core + 6 <= end_core)
+            core_range.insert(core + 6);
+          if (core + 7 <= end_core)
+            core_range.insert(core + 7);
+        } else {
+          if (core + 3 <= end_core)
+            core_range.insert(core + 2);
+          if (core + 5 <= end_core)
+            core_range.insert(core + 4);
+          if (core + 8 <= end_core)
+            core_range.insert(core + 7);
+          if (core + 9 <= end_core)
+            core_range.insert(core + 8);
+        }
+      }
+
+      for (auto core : core_range) {
+        core_stream_mapping[core] = stream_id;
+      }
+
+      global_dynamic_core_ranges[stream_id] = core_range;
+      std::cout << "GLOBAL: STREAM " << stream_id << " -> cores [" << start_core << "-" << end_core << "]" << std::endl;
+    }
+
+
+    for (unsigned core_id = 0; core_id < total_cores; core_id+=10) {
+      unsigned sm2_id = core_id + 2;
+      unsigned sm5_id = core_id + 5;
+      shader_core_ctx *core = m_gpgpu_sim->get_core_by_sid(sm2_id);
+      core->set_bypassL1D(true);
+      core = m_gpgpu_sim->get_core_by_sid(sm5_id);
+      core->set_bypassL1D(true);
+    }
   } else {
     std::cout << "GLOBAL ANALYSIS: Only " << num_streams << " stream found, no partitioning needed" << std::endl;
   }
   
   std::cout << "=== END GLOBAL STREAM ANALYSIS ===" << std::endl;
 }
+
 
 void accel_sim_framework::store_original_commands_by_stream() {
   std::cout << "=== STORING ORIGINAL COMMANDS BY STREAM ===" << std::endl;

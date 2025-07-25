@@ -21,6 +21,7 @@
 #include "trace_driven.h"
 
 extern unsigned stream_num;
+extern std::vector<trace_kernel_info_t *> kernels_info;
 
 class accel_sim_framework {
  public:
@@ -34,6 +35,7 @@ class accel_sim_framework {
   void cleanup(unsigned finished_kernel);
   unsigned simulate();
   void global_stream_analysis();  // Global stream analysis function
+
   void store_original_commands_by_stream();  // Store original commands for each stream
   void restart_completed_stream(unsigned long long stream_id);  // Restart a completed stream
   trace_kernel_info_t *create_kernel_info(kernel_trace_t *kernel_trace_info,
@@ -62,13 +64,12 @@ class accel_sim_framework {
   unsigned trace2_kernel_num;
 
   std::vector<unsigned long long> busy_streams;
-  std::vector<trace_kernel_info_t *> kernels_info;
+
   // counts the number of kernels launched in the stream
   std::map<unsigned int, unsigned int> stream_kernel_map;
   std::vector<trace_command> commandlist;
   
   // Global stream analysis data
-  std::set<unsigned long long> global_unique_streams;
   std::map<unsigned long long, std::pair<unsigned, unsigned>> global_stream_core_ranges;
   std::map<unsigned long long, std::set<unsigned>> global_stream_core_ranges_set;
 
