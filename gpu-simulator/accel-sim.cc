@@ -49,6 +49,14 @@ void accel_sim_framework::simulation_loop() {
   // while loop till the end of the end kernel execution
   // prints stats
 
+  // Record simulation start time for minimum simulation time tracking
+  if (enable_min_simulation_time && global_unique_streams.size() == 2) {
+    simulation_start_cycle = m_gpgpu_sim->gpu_sim_cycle;
+    std::cout << "=== MINIMUM SIMULATION TIME ENABLED ===" << std::endl;
+    std::cout << "Minimum simulation cycles: " << min_simulation_cycles << std::endl;
+    std::cout << "Simulation started at cycle: " << simulation_start_cycle << std::endl;
+  }
+
   while (commandlist_index < commandlist.size() || !kernels_info.empty()) {
     parse_commandlist();
 
@@ -74,18 +82,18 @@ void accel_sim_framework::simulation_loop() {
       for (auto s : busy_streams) {
         if (s == k->get_cuda_stream_id()) stream_busy = true;
       }
-      std::cout << "Kernel " << k->get_name() << " (uid:" << k->get_uid() 
-                << ", stream:" << k->get_cuda_stream_id() 
-                << ") - stream_busy:" << stream_busy 
-                << ", can_start:" << m_gpgpu_sim->can_start_kernel()
-                << ", was_launched:" << k->was_launched() << std::endl;
+      //std::cout << "Kernel " << k->get_name() << " (uid:" << k->get_uid() 
+      //          << ", stream:" << k->get_cuda_stream_id() 
+      //          << ") - stream_busy:" << stream_busy 
+      //          << ", can_start:" << m_gpgpu_sim->can_start_kernel()
+      //          << ", was_launched:" << k->was_launched() << std::endl;
                 
       if (!stream_busy && m_gpgpu_sim->can_start_kernel() &&
           !k->was_launched()) {
-        std::cout << ">>> LAUNCHING kernel name: " << k->get_name()
-                  << " uid: " << k->get_uid()
-                  << " cuda_stream_id: " << k->get_cuda_stream_id()
-                  << " at cycle: " << m_gpgpu_sim->gpu_sim_cycle << std::endl;
+        //std::cout << ">>> LAUNCHING kernel name: " << k->get_name()
+        //          << " uid: " << k->get_uid()
+        //          << " cuda_stream_id: " << k->get_cuda_stream_id()
+        //          << " at cycle: " << m_gpgpu_sim->gpu_sim_cycle << std::endl;
         
         // Apply pre-calculated global core partitioning
         if (enable_stream_partitioning && 
@@ -138,6 +146,15 @@ void accel_sim_framework::simulation_loop() {
       m_gpgpu_context->print_simulation_time();
     }
 
+    // commandlist_index, commandlist.size(), kernels_info.size()
+    //printf("commandlist_index: %d, commandlist.size(): %d, kernels_info.size(): %d\n",
+    //  commandlist_index, commandlist.size(), kernels_info.size());
+    
+    // Check minimum simulation time before exiting the loop
+    if (commandlist_index >= commandlist.size() && kernels_info.empty()) {
+      check_and_restart_for_min_simulation_time();
+    }
+    
     if (m_gpgpu_sim->cycle_insn_cta_max_hit()) {
       printf(
           "GPGPU-Sim: ** break due to reaching the maximum cycles (or "
@@ -257,11 +274,55 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
       break;
     }
   }
+
+  //if (all_streams_completed) {
+    //print out the simulation time
+    //std::cout << "Simulation time: " << m_gpgpu_sim->gpu_sim_cycle << std::endl;
+    //std::cout << " absolute cycle: " << m_gpgpu_sim->gpu_core_abs_cycle << std::endl;
+    //std::cout << " total cycle: " << m_gpgpu_sim->gpu_tot_sim_cycle << std::endl;
+    //printf("all_streams_completed: %d end_of_one_stream: %d global_unique_streams.size(): %d simulation_start_cycle: %d gpu_sim_cycle: %d min_simulation_cycles: %d\n",
+    //all_streams_completed, end_of_one_stream, global_unique_streams.size(), simulation_start_cycle, m_gpgpu_sim->gpu_sim_cycle, min_simulation_cycles);
+  //}
   
-  // Only exit if all streams have completed their maximum repetitions
+  // Check minimum simulation time for two-stream mode
+  if (enable_min_simulation_time && global_unique_streams.size() == 2 && all_streams_completed) {
+    unsigned long long current_cycle = m_gpgpu_sim->gpu_sim_cycle;
+    unsigned long long elapsed_cycles = current_cycle - simulation_start_cycle;
+    
+    std::cout << "=== MINIMUM SIMULATION TIME CHECK ===" << std::endl;
+    std::cout << "Current cycle: " << current_cycle << std::endl;
+    std::cout << "Elapsed cycles: " << elapsed_cycles << std::endl;
+    std::cout << "Minimum required cycles: " << min_simulation_cycles << std::endl;
+    
+    if (elapsed_cycles < min_simulation_cycles) {
+      std::cout << "Both streams completed too early! Restarting both streams..." << std::endl;
+      std::cout << "Need " << (min_simulation_cycles - elapsed_cycles) << " more cycles" << std::endl;
+      
+      // Restart both streams
+      for (auto stream_id : global_unique_streams) {
+        restart_completed_stream(stream_id);
+      }
+      
+      // Reset completion flags
+      for (auto stream_id : global_unique_streams) {
+        stream_completed[stream_id] = false;
+      }
+      
+      both_streams_completed_early = true;
+      std::cout << "=== BOTH STREAMS RESTARTED FOR MINIMUM SIMULATION TIME ===" << std::endl;
+      return; // Continue simulation
+    } else {
+      std::cout << "Minimum simulation time requirement met!" << std::endl;
+    }
+  }
+  
+  // Only exit if all streams have completed their maximum repetitions AND minimum time is met
   if (end_of_one_stream && all_streams_completed && commandlist_index >= commandlist.size()) {
-    std::cout << "=== ALL STREAMS COMPLETED MAXIMUM REPETITIONS - ENDING SIMULATION ===" << std::endl;
-    exit(0);
+    if (!enable_min_simulation_time || global_unique_streams.size() != 2 || 
+        (m_gpgpu_sim->gpu_sim_cycle - simulation_start_cycle) >= min_simulation_cycles) {
+      std::cout << "=== ALL STREAMS COMPLETED MAXIMUM REPETITIONS - ENDING SIMULATION ===" << std::endl;
+      exit(0);
+    }
   }
 }
 
@@ -384,6 +445,12 @@ void accel_sim_framework::init() {
   enable_stream_repetition = true;  // Enable by default, can be made configurable
   max_repetitions = 100000;  // Default max repetitions, can be made configurable
   
+  // Initialize minimum simulation time variables (for two-stream mode)
+  enable_min_simulation_time = true;  // Enable by default for two-stream mode
+  min_simulation_cycles = 10000000;  // Default minimum simulation cycles (1M cycles)
+  simulation_start_cycle = 0;  // Will be set when simulation starts
+  both_streams_completed_early = false;
+  
   // GLOBAL STREAM ANALYSIS: Analyze all commands to find total unique streams
   global_stream_analysis();
   
@@ -465,16 +532,16 @@ void accel_sim_framework::global_stream_analysis() {
       std::cout << "GLOBAL: STREAM " << stream_id << " -> cores [" << start_core << "-" << end_core << "]" << std::endl;
     }
 
-
     // for two streams, in the beginning, we will first allocate 40% of cores to two streams in interleaved mode    
     // consider SM pairs:
     // SM0/SM1 will be shared by two streams, sharing L1 cache
     // SM2/SM3 will be shared by two streams, SM2 bypasses L1 cache
     // SM4/SM5 will be shared by two streams, SM5 bypasses L1 cache
-    // SM6/SM7 will be used by stream 0 exclusively, sharing L1 cache
-    // SM8/SM9 will be used by stream 1 exclusively, sharing L1 cache
-    // stream 0 will be using: 0,2,4,6,7
-    // stream 1 will be using: 1,3,5,8,9
+    // SM6/SM7 will be shared by two streams, both bypasses L1 cache
+    // SM8/SM9 will be used by stream 0 exclusively, sharing L1 cache
+    // SM10/SM11 will be used by stream 1 exclusively, sharing L1 cache
+    // stream 0 will be using: 0,2,4,6, 8, 9, 12,14,16,18,20,21
+    // stream 1 will be using: 1,3,5,7,10,11, 13,15,17,19,22,23
 
     for (unsigned i = 0; i < num_streams; i++) {
       unsigned long long stream_id = stream_list[i];
@@ -482,7 +549,7 @@ void accel_sim_framework::global_stream_analysis() {
       unsigned end_core = total_cores - 1;
 
       std::set<unsigned> core_range;
-      for (unsigned core = start_core; core <= end_core; core+=10) {
+      for (unsigned core = start_core; core <= end_core; core+=12) {
         core_range.insert(core);
         if (stream_id == 0) {
           if (core + 2 <= end_core)
@@ -491,17 +558,21 @@ void accel_sim_framework::global_stream_analysis() {
           core_range.insert(core + 4);
           if (core + 6 <= end_core)
             core_range.insert(core + 6);
-          if (core + 7 <= end_core)
-            core_range.insert(core + 7);
-        } else {
-          if (core + 3 <= end_core)
-            core_range.insert(core + 2);
-          if (core + 5 <= end_core)
-            core_range.insert(core + 4);
           if (core + 8 <= end_core)
-            core_range.insert(core + 7);
-          if (core + 9 <= end_core)
             core_range.insert(core + 8);
+          if (core + 9 <= end_core)
+            core_range.insert(core + 9);
+        } else {
+          if (core + 2 <= end_core)
+            core_range.insert(core + 2);
+          if (core + 4 <= end_core)
+            core_range.insert(core + 4);
+          if (core + 6 <= end_core)
+            core_range.insert(core + 6);
+          if (core + 9 <= end_core)
+            core_range.insert(core + 9);
+          if (core + 10 <= end_core)
+            core_range.insert(core + 10);
         }
       }
 
@@ -514,13 +585,19 @@ void accel_sim_framework::global_stream_analysis() {
     }
 
 
-    for (unsigned core_id = 0; core_id < total_cores; core_id+=10) {
+    for (unsigned core_id = 0; core_id < total_cores; core_id+=12) {
       unsigned sm2_id = core_id + 2;
       unsigned sm5_id = core_id + 5;
+      unsigned sm6_id = core_id + 6;
+      unsigned sm7_id = core_id + 7;
       shader_core_ctx *core = m_gpgpu_sim->get_core_by_sid(sm2_id);
-      core->set_bypassL1D(true);
+      core->set_stream_bypassL1D(0,true);
       core = m_gpgpu_sim->get_core_by_sid(sm5_id);
-      core->set_bypassL1D(true);
+      core->set_stream_bypassL1D(1,true);
+      core = m_gpgpu_sim->get_core_by_sid(sm6_id);
+      core->set_stream_bypassL1D(0,true);
+      core = m_gpgpu_sim->get_core_by_sid(sm7_id);
+      core->set_stream_bypassL1D(1,true);
     }
   } else {
     std::cout << "GLOBAL ANALYSIS: Only " << num_streams << " stream found, no partitioning needed" << std::endl;
@@ -598,4 +675,52 @@ void accel_sim_framework::restart_completed_stream(unsigned long long stream_id)
   stream_completed[stream_id] = false;
   
   std::cout << "=== STREAM " << stream_id << " RESTARTED ===" << std::endl;
+}
+
+void accel_sim_framework::check_and_restart_for_min_simulation_time() {
+  // Only check for two-stream mode with minimum simulation time enabled
+  if (!enable_min_simulation_time || global_unique_streams.size() != 2) {
+    return;
+  }
+  
+  unsigned long long current_cycle = m_gpgpu_sim->gpu_sim_cycle;
+  unsigned long long elapsed_cycles = current_cycle - simulation_start_cycle;
+  
+  std::cout << "=== MINIMUM SIMULATION TIME CHECK (LOOP EXIT) ===" << std::endl;
+  std::cout << "Current cycle: " << current_cycle << std::endl;
+  std::cout << "Elapsed cycles: " << elapsed_cycles << std::endl;
+  std::cout << "Minimum required cycles: " << min_simulation_cycles << std::endl;
+  std::cout << "Commandlist empty: " << (commandlist_index >= commandlist.size()) << std::endl;
+  std::cout << "Kernels empty: " << kernels_info.empty() << std::endl;
+  
+  if (elapsed_cycles < min_simulation_cycles) {
+    std::cout << "Both streams completed too early! Restarting both streams..." << std::endl;
+    std::cout << "Need " << (min_simulation_cycles - elapsed_cycles) << " more cycles" << std::endl;
+    
+    // Restart both streams by adding their original commands back to commandlist
+    for (auto stream_id : global_unique_streams) {
+      auto& original_commands = stream_original_commands[stream_id];
+      if (!original_commands.empty()) {
+        for (const auto& command : original_commands) {
+          commandlist.push_back(command);
+          std::cout << "Added command to restart stream " << stream_id << ": " << command.command_string << std::endl;
+        }
+        
+        // Update repetition count
+        stream_repetition_count[stream_id]++;
+        
+        // Reset completion flags
+        stream_completed[stream_id] = false;
+        
+        std::cout << "Stream " << stream_id << " restarted (repetition " << stream_repetition_count[stream_id] << ")" << std::endl;
+      }
+    }
+    
+    both_streams_completed_early = true;
+    std::cout << "=== BOTH STREAMS RESTARTED FOR MINIMUM SIMULATION TIME ===" << std::endl;
+    std::cout << "Continuing simulation..." << std::endl;
+  } else {
+    std::cout << "Minimum simulation time requirement met!" << std::endl;
+    std::cout << "Simulation will exit normally." << std::endl;
+  }
 }

@@ -38,6 +38,7 @@ class accel_sim_framework {
 
   void store_original_commands_by_stream();  // Store original commands for each stream
   void restart_completed_stream(unsigned long long stream_id);  // Restart a completed stream
+  void check_and_restart_for_min_simulation_time();  // Check minimum simulation time and restart if needed
   trace_kernel_info_t *create_kernel_info(kernel_trace_t *kernel_trace_info,
                                           gpgpu_context *m_gpgpu_context,
                                           trace_config *config,
@@ -81,5 +82,11 @@ class accel_sim_framework {
   unsigned pending_stream_count = 0;  // Count of streams that have been launched but not completed yet
   unsigned max_repetitions;  // Maximum number of repetitions allowed (0 = no repetition)
   bool enable_stream_repetition;  // Flag to enable/disable stream repetition
+
+  // Minimum simulation time configuration (for two-stream mode)
+  unsigned long long min_simulation_cycles;  // Minimum simulation cycles required
+  bool enable_min_simulation_time;  // Flag to enable/disable minimum simulation time
+  unsigned long long simulation_start_cycle;  // Track when simulation started
+  bool both_streams_completed_early;  // Track if both streams completed before minimum time
 
 };
