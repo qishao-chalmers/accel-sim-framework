@@ -31,6 +31,9 @@ class accel_sim_framework {
   void init();
   
   void simulation_loop();
+  void reset_simulation_for_policy_change(const std::string& new_policy, 
+                                        bool bypass_stream0, 
+                                        bool bypass_stream1);
   void parse_commandlist();
   void cleanup(unsigned finished_kernel);
   unsigned simulate();
@@ -69,10 +72,6 @@ class accel_sim_framework {
   // counts the number of kernels launched in the stream
   std::map<unsigned int, unsigned int> stream_kernel_map;
   std::vector<trace_command> commandlist;
-  
-  // Global stream analysis data
-  std::map<unsigned long long, std::pair<unsigned, unsigned>> global_stream_core_ranges;
-  std::map<unsigned long long, std::set<unsigned>> global_stream_core_ranges_set;
 
   // Stream repetition and completion tracking
   std::map<unsigned long long, bool> stream_completed;  // Track if a stream has completed its original workload
